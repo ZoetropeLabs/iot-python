@@ -114,7 +114,7 @@ if __name__ == "__main__":
 	if configFilePath is not None:
 		options = ibmiotf.application.ParseConfigFile(configFilePath)
 	else:
-		options = {"org": organization, "id": appId, "auth-method": authMethod, "auth-key": authKey, "auth-token": authToken}
+		options = {"org": organization, "id": appId, "auth-method": authMethod, "auth-key": authKey, "auth-token": authToken, "ciphers": "ECDH+AES256"}
 	try:
 		client = ibmiotf.application.Client(options)
 		client.connect()

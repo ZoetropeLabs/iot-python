@@ -173,7 +173,8 @@ class Client(ibmiotf.AbstractClient):
 			clientId = clientIdPrefix + ":" + options['org'] + ":" + options['id'], 
 			username = username, 
 			password = password,
-			logHandlers = logHandlers
+			logHandlers = logHandlers,
+			ciphers=options['ciphers']
 		)
 		
 		# Add handlers for events and status

@@ -80,7 +80,8 @@ class Client(AbstractClient):
 			clientId = "d:" + options['org'] + ":" + options['type'] + ":" + options['id'], 
 			username = "use-token-auth" if (options['auth-method'] == "token") else None,
 			password = options['auth-token'],
-			logHandlers = logHandlers
+			logHandlers = logHandlers,
+			ciphers=options['ciphers']
 		)
 
 

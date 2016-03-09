@@ -37,7 +37,7 @@ class Message:
 		self.timestamp = timestamp
 	
 class AbstractClient:
-	def __init__(self, organization, clientId, username, password, logHandlers=None):
+	def __init__(self, organization, clientId, username, password, logHandlers=None, ciphers=None):
 		self.organization = organization
 		self.username = username
 		self.password = password
@@ -58,9 +58,6 @@ class AbstractClient:
 		# Configure logging
 		self.logger = logging.getLogger(self.__module__+"."+self.__class__.__name__)
 		self.logger.setLevel(logging.INFO)
-		
-		# Remove any existing log handlers we may have picked up from getLogger()
-		self.logger.handlers = []
 		
 		if logHandlers:
 			if isinstance(logHandlers, list):
@@ -98,7 +95,7 @@ class AbstractClient:
 				self.port = 8883
 				# Path to certificate
 				caFile = os.path.dirname(os.path.abspath(__file__)) + "/messaging.pem"
-				self.client.tls_set(ca_certs=caFile, certfile=None, keyfile=None, cert_reqs=ssl.CERT_REQUIRED, tls_version=ssl.PROTOCOL_TLSv1_2)
+				self.client.tls_set(ca_certs=caFile, certfile=None, keyfile=None, cert_reqs=ssl.CERT_REQUIRED, tls_version=ssl.PROTOCOL_TLSv1_2, ciphers=ciphers)
 				# Pre Python 3.2 the Paho MQTT client will use a bespoke hostname check which does not support wildcard certificates
 				# Fix is included in 1.1 - https://bugs.eclipse.org/bugs/show_bug.cgi?id=440547
 				if float(get_distribution('paho-mqtt').version) < 1.1 and (sys.version_info[0] < 3 or (sys.version_info[0] == 3 and sys.version_info[1] < 2)):
