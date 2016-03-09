@@ -1,5 +1,5 @@
 # *****************************************************************************
-# Copyright (c) 2014 IBM Corporation and other Contributors.
+# Copyright (c) 2016 IBM Corporation and other Contributors.
 #
 # All rights reserved. This program and the accompanying materials
 # are made available under the terms of the Eclipse Public License v1.0
@@ -7,7 +7,7 @@
 # http://www.eclipse.org/legal/epl-v10.html 
 #
 # Contributors:
-#   David Parker  - Initial Contribution
+#   Amit M Mangalvedkar  - Initial Contribution
 # *****************************************************************************
 
 import json
@@ -29,15 +29,17 @@ try:
 except ImportError:
 	import ConfigParser as configparser
 
-COMMAND_RE = re.compile("iot-2/cmd/(.+)/fmt/(.+)")
+COMMAND_RE = re.compile("iot-2/type/(.+)/id/(.+)/cmd/(.+)/fmt/(.+)")
 
 
 class Command:
 	def __init__(self, pahoMessage, messageEncoderModules):
 		result = COMMAND_RE.match(pahoMessage.topic)
 		if result:
-			self.command = result.group(1)
-			self.format = result.group(2)
+			self.type = result.group(1)
+			self.id = result.group(2)
+			self.command = result.group(3)
+			self.format = result.group(4)
 
 			if self.format in messageEncoderModules:
 				message = messageEncoderModules[self.format].decode(pahoMessage)
@@ -51,7 +53,7 @@ class Command:
 
 class Client(AbstractClient):
 	
-	COMMAND_TOPIC = "iot-2/cmd/+/fmt/+"
+	COMMAND_TOPIC = "iot-2/type/+/id/+/cmd/+/fmt/+"
 
 	def __init__(self, options, logHandlers=None):
 		self._options = options
@@ -62,7 +64,7 @@ class Client(AbstractClient):
 			raise ConfigurationException("Missing required property: type")
 		if self._options['id'] == None: 
 			raise ConfigurationException("Missing required property: id")
-		
+				
 		if self._options['org'] != "quickstart":
 			if self._options['auth-method'] == None: 
 				raise ConfigurationException("Missing required property: auth-method")
@@ -72,12 +74,12 @@ class Client(AbstractClient):
 					raise ConfigurationException("Missing required property for token based authentication: auth-token")
 			else:
 				raise UnsupportedAuthenticationMethod(options['authMethod'])
-
-
+		self._options['subscriptionList'] = {}
+		
 		AbstractClient.__init__(
 			self, 
 			organization = options['org'],
-			clientId = "d:" + options['org'] + ":" + options['type'] + ":" + options['id'], 
+			clientId = "g:" + options['org'] + ":" + options['type'] + ":" + options['id'], 
 			username = "use-token-auth" if (options['auth-method'] == "token") else None,
 			password = options['auth-token'],
 			logHandlers = logHandlers
@@ -86,15 +88,21 @@ class Client(AbstractClient):
 
 		# Add handler for commands if not connected to QuickStart
 		if self._options['org'] != "quickstart":
-			self.client.message_callback_add("iot-2/cmd/+/fmt/+", self.__onCommand)
+			gatewayCommandTopic = "iot-2/type/" + options['type'] + "/id/" + options['id'] + "/cmd/+/fmt/json"
+			messageNotificationTopic = "iot-2/type/" + options['type'] + "/id/" + options['id'] + "/notify"
+			#localTopic = "iot-2/type/iotsample-raspberrypi2/id/89898889/cmd/greeting/fmt/json"
+			self.client.message_callback_add(gatewayCommandTopic, self.__onCommand)
+			self.client.message_callback_add("iot-2/type/+/id/+/cmd/+/fmt/+", self.__onDeviceCommand)
+			self.client.message_callback_add(messageNotificationTopic, self.__onMessageNotification)
+			
 
 		self.subscriptionsAcknowledged = threading.Event()
 		
 		# Initialize user supplied callback
 		self.commandCallback = None
-
+		self.deviceCommandCallback = None
+		self.notificationCallback = None
 		self.client.on_connect = self.on_connect
-		
 		self.setMessageEncoderModule('json', jsonCodec)
 		self.setMessageEncoderModule('json-iotf', jsonIotfCodec)
 
@@ -113,33 +121,36 @@ class Client(AbstractClient):
 		if rc == 0:
 			self.connectEvent.set()
 			self.logger.info("Connected successfully: %s" % self.clientId)
-			if self._options['org'] != "quickstart":
-				self.__subscribeToCommands()
+			#if self._options['org'] != "quickstart":
+				#self.subscribeToGatewayCommands()
 		elif rc == 5:
 			self.logAndRaiseException(ConnectionException("Not authorized: s (%s, %s, %s)" % (self.clientId, self.username, self.password)))
 		else:
 			self.logAndRaiseException(ConnectionException("Connection failed: RC= %s" % (rc)))
+
 	
 	'''
-	Publish an event in IoTF.  
+	Publish an event in Watson IoT.  
 	Parameters:
 		event - the name of this event
 		msgFormat - the format of the data for this event
 		data - the data for this event
+		deviceType - the device type of the device on the behalf of which the gateway is publishing the event
+		
 	Optional paramters:
 		qos - the equivalent MQTT semantics of quality of service using the same constants (0, 1 and 2)
 		on_publish - a function that will be called when receipt of the publication is confirmed.  This
 					 has different implications depending on the qos:
 					 qos 0 - the client has asynchronously begun to send the event
-					 qos 1 and 2 - the client has confirmation of delivery from IoTF
+					 qos 1 and 2 - the client has confirmation of delivery from Watson IoT
 	'''
-	def publishEvent(self, event, msgFormat, data, qos=0, on_publish=None):
+	def publishDeviceEvent(self, deviceType, deviceId, event, msgFormat, data, qos=0, on_publish=None):
 		if not self.connectEvent.wait():
-			self.logger.warning("Unable to send event %s because device is not currently connected")
+			self.logger.warning("Unable to send event %s because gateway as a device is not currently connected")
 			return False
 		else:
 			self.logger.debug("Sending event %s with data %s" % (event, json.dumps(data)))
-			topic = 'iot-2/evt/'+event+'/fmt/' + msgFormat
+			topic = 'iot-2/type/' + deviceType + '/id/' + deviceId +'/evt/'+event+'/fmt/' + msgFormat
 			
 			if msgFormat in self._messageEncoderModules:
 				payload = self._messageEncoderModules[msgFormat].encode(data, datetime.now(pytz.timezone('UTC')))
@@ -161,6 +172,53 @@ class Client(AbstractClient):
 						self._messagesLock.release()
 			else:
 				raise MissingMessageEncoderException(msgFormat)
+
+
+	'''
+	Publish an event in Watson IoT as a device.  
+	Parameters:
+		event - the name of this event
+		msgFormat - the format of the data for this event
+		data - the data for this event
+	Optional paramters:
+		qos - the equivalent MQTT semantics of quality of service using the same constants (0, 1 and 2)
+		on_publish - a function that will be called when receipt of the publication is confirmed.  This
+					 has different implications depending on the qos:
+					 qos 0 - the client has asynchronously begun to send the event
+					 qos 1 and 2 - the client has confirmation of delivery from Watson IoT
+	'''
+	def publishGatewayEvent(self, event, msgFormat, data, qos=0, on_publish=None):
+		gatewayType = self._options['type']
+		gatewayId = self._options['id']
+
+		if not self.connectEvent.wait():
+			self.logger.warning("Unable to send event %s because gateway as a device is not currently connected")
+			return False
+		else:
+			self.logger.debug("Sending event %s with data %s" % (event, json.dumps(data)))
+			topic = 'iot-2/type/' + gatewayType + '/id/' + gatewayId +'/evt/'+event+'/fmt/' + msgFormat
+
+			if msgFormat in self._messageEncoderModules:
+				payload = self._messageEncoderModules[msgFormat].encode(data, datetime.now(pytz.timezone('UTC')))
+				
+				try:
+					# need to take lock to ensure on_publish is not called before we know the mid
+					if on_publish is not None:
+						self._messagesLock.acquire()
+					
+					result = self.client.publish(topic, payload=payload, qos=qos, retain=False)
+					if result[0] == paho.MQTT_ERR_SUCCESS:
+						if on_publish is not None:
+							self._onPublishCallbacks[result[1]] = on_publish
+						return True
+					else:
+						return False
+				finally:
+					if on_publish is not None:
+						self._messagesLock.release()
+			else:
+				raise MissingMessageEncoderException(msgFormat)
+
 
 
 	'''
@@ -202,28 +260,61 @@ class Client(AbstractClient):
 			self.logger.error(e)			
 			raise ConnectionException("Server not found")
 
-#		print ("Response status = ", response.status_code, "\tResponse ", response.headers)
 		if response.status_code >= 300:
 			self.logger.warning(response.headers)
 		return response.status_code
 
-
-	def __subscribeToCommands(self):
+	def subscribeToDeviceCommands(self, deviceType, deviceId, command='+', format='json', qos=1):
 		if self._options['org'] == "quickstart":
-			self.logger.warning("QuickStart applications do not support commands")
+			self.logger.warning("QuickStart not supported in Gateways")
 			return False
 		
 		if not self.connectEvent.wait():
-			self.logger.warning("Unable to subscribe to commands because device is not currently connected")
+			self.logger.warning("Unable to subscribe to device commands because gateway is not currently connected")
 			return False
 		else:
-			topic = 'iot-2/cmd/+/fmt/json'
-			self.client.subscribe(topic, qos=1)
+			topic = 'iot-2/type/' + deviceType + '/id/' + deviceId + '/cmd/' + command + '/fmt/' + format
+			self.client.subscribe(topic, qos=qos)
+			self._options['subscriptionList'][topic] = qos
 			return True
+
+
+
+	def subscribeToGatewayCommands(self, command='+', format='json', qos=1):
+		deviceType = self._options['type']
+		deviceId = self._options['id']
+		if self._options['org'] == "quickstart":
+			self.logger.warning("QuickStart not supported in Gateways")
+			return False
+		if not self.connectEvent.wait():
+			self.logger.warning("Unable to subscribe to gateway commands because gateway is not currently connected")
+			return False
+		else:
+			topic = 'iot-2/type/' + deviceType + '/id/' + deviceId + '/cmd/' + command + '/fmt/' + format
+			self.client.subscribe(topic)
+			self._options['subscriptionList'][topic] = qos
+			return True
+
+		
+	def subscribeToGatewayNotifications(self):
+		deviceType = self._options['type']
+		deviceId = self._options['id']
+		if self._options['org'] == "quickstart":
+			self.logger.warning("QuickStart not supported in Gateways")
+			return False
+		if not self.connectEvent.wait():
+			self.logger.warning("Unable to subscribe to notifications because gateway is not currently connected")
+			return False
+		else:
+			topic = 'iot-2/type/' + deviceType + '/id/' + deviceId + '/notify'
+			self.client.subscribe(topic)
+			#self._options['subscriptionList'][topic] = qos
+			return True
+		
 
 	'''
 	Internal callback for device command messages, parses source device from topic string and 
-	passes the information on to the registerd device command callback
+	passes the information on to the registered device command callback
 	'''
 	def __onCommand(self, client, userdata, pahoMessage):
 		with self._recvLock:
@@ -233,8 +324,38 @@ class Client(AbstractClient):
 		except InvalidEventException as e:
 			self.logger.critical(str(e))
 		else:
-			self.logger.debug("Received command '%s'" % (command.command))
+			self.logger.debug("Received device command '%s'" % (command.command))
 			if self.commandCallback: self.commandCallback(command)
+
+	'''
+	Internal callback for gateway command messages, parses source device from topic string and 
+	passes the information on to the registered device command callback
+	'''
+	def __onDeviceCommand(self, client, userdata, pahoMessage):
+		with self._recvLock:
+			self.recv = self.recv + 1
+		try:
+			command = Command(pahoMessage, self._messageEncoderModules)
+		except InvalidEventException as e:
+			self.logger.critical(str(e))
+		else:
+			self.logger.debug("Received gateway command '%s'" % (command.command))
+			if self.deviceCommandCallback: self.deviceCommandCallback(command)
+
+	'''
+	Internal callback for gateway notification messages, parses source device from topic string and 
+	passes the information on to the registered device command callback
+	'''
+	def __onMessageNotification(self, client, userdata, pahoMessage):
+		with self._recvLock:
+			self.recv = self.recv + 1
+		try:
+			command = Command(pahoMessage, self._messageEncoderModules)
+		except InvalidEventException as e:
+			self.logger.critical(str(e))
+		else:
+			self.logger.debug("Received Notification '%s'" % (command.command))
+			if self.notificationCallback: self.notificationCallback(command)
 
 
 
@@ -251,25 +372,12 @@ class DeviceInfo(object):
 	
 	def __str__(self):
 		return json.dumps(self.__dict__, sort_keys=True)
-
 	
-class DeviceFirmware(object):
-	def __init__(self):
-		self.version = None
-		self.name = None
-		self.url = None
-		self.verifier = None
-		self.state = None
-		self.updateStatus = None
-		self.updatedDateTime = None
-
-	def __str__(self):
-		return json.dumps(self.__dict__, sort_keys=True)
-
 	
-class ManagedClient(Client):
+class ManagedGateway(Client):
 
 	# Publish MQTT topics
+	'''
 	MANAGE_TOPIC = 'iotdevice-1/mgmt/manage'
 	UNMANAGE_TOPIC = 'iotdevice-1/mgmt/unmanage'
 	UPDATE_LOCATION_TOPIC = 'iotdevice-1/device/update/location'
@@ -280,10 +388,22 @@ class ManagedClient(Client):
 	# Subscribe MQTT topics
 	DM_RESPONSE_TOPIC = 'iotdm-1/response'
 	DM_OBSERVE_TOPIC = 'iotdm-1/observe'
+	'''
+
+	MANAGE_TOPIC_TEMPLATE = 'iotdevice-1/type/%s/id/%s/mgmt/manage'
+	UNMANAGE_TOPIC_TEMPLATE = 'iotdevice-1/type/%s/id/%s/mgmt/unmanage'
+	UPDATE_LOCATION_TOPIC_TEMPLATE = 'iotdevice-1/type/%s/id/%s/device/update/location'
+	ADD_ERROR_CODE_TOPIC_TEMPLATE = 'iotdevice-1/type/%s/id/%s/add/diag/errorCodes'
+	CLEAR_ERROR_CODES_TOPIC_TEMPLATE = 'iotdevice-1/type/%s/id/%s/clear/diag/errorCodes'
+	NOTIFY_TOPIC_TEMPLATE = 'iotdevice-1/type/%s/id/%s/notify'
+	
+	# Subscribe MQTT topics
+	DM_RESPONSE_TOPIC_TEMPLATE = 'iotdm-1/type/%s/id/%s/response'
+	DM_OBSERVE_TOPIC_TEMPLATE = 'iotdm-1/type/%s/id/%s/observe'
 	
 	def __init__(self, options, logHandlers=None, deviceInfo=None):
 		if options['org'] == "quickstart":
-			raise Exception("Unable to create ManagedClient instance.  QuickStart devices do not support device management")
+			raise Exception("Unable to create ManagedGateway instance.  QuickStart devices do not support device management")
 
 		Client.__init__(self, options, logHandlers)
 		# TODO: Raise fatal exception if tries to create managed device client for QuickStart
@@ -312,7 +432,10 @@ class ManagedClient(Client):
 		self._location = None
 		self._errorCode = None
 	
-	
+		self._gatewayType = self._options['type']
+		self._gatewayId = self._options['id']
+
+
 	def setSerialNumber(self, serialNumber):
 		self._deviceInfo.serialNumber = serialNumber
 		return self.notifyFieldChange("deviceInfo.serialNumber", serialNumber)
@@ -350,7 +473,7 @@ class ManagedClient(Client):
 		with self._deviceMgmtObservationsLock:
 			if field in self._deviceMgmtObservations:
 				if not self.readyForDeviceMgmt.wait():
-					self.logger.warning("Unable to notify service of field change because device is not ready for device management")
+					self.logger.warning("Unable to notify service of field change because gateway is not ready for gateway management")
 					return threading.Event().set()
 		
 				reqId = str(uuid.uuid4())
@@ -362,30 +485,25 @@ class ManagedClient(Client):
 					"reqId": reqId
 				}
 				
+				notify_topic = ManagedGateway.NOTIFY_TOPIC_TEMPLATE %  (self._gatewayType,self._gatewayId)				
 				resolvedEvent = threading.Event()
-				self.client.publish(ManagedClient.NOTIFY_TOPIC, payload=json.dumps(message), qos=1, retain=False)
+				
+				self.client.publish(notify_topic, payload=json.dumps(message), qos=1, retain=False)
 				with self._deviceMgmtRequestsPendingLock:
-					self._deviceMgmtRequestsPending[reqId] = {"topic": ManagedClient.NOTIFY_TOPIC, "message": message, "event": resolvedEvent}
+					self._deviceMgmtRequestsPending[reqId] = {"topic": notify_topic, "message": message, "event": resolvedEvent}
 				
 				return resolvedEvent
 			else:
 				return threading.Event().set()
-	'''
-	This is called after the client has received a CONNACK message from the broker in response to calling connect(). 
-	The parameter rc is an integer giving the return code:
-	0: Success
-	1: Refused - unacceptable protocol version
-	2: Refused - identifier rejected
-	3: Refused - server unavailable
-	4: Refused - bad user name or password
-	5: Refused - not authorised
-	'''
+
 	def on_connect(self, client, userdata, flags, rc):
 		if rc == 0:
 			self.connectEvent.set()
 			self.logger.info("Connected successfully: %s" % self.clientId)
 			if self._options['org'] != "quickstart":
-				self.client.subscribe( [(ManagedClient.DM_RESPONSE_TOPIC, 1), (ManagedClient.DM_OBSERVE_TOPIC, 1), (Client.COMMAND_TOPIC, 1)] )
+				dm_response_topic = ManagedGateway.DM_RESPONSE_TOPIC_TEMPLATE %  (self._gatewayType,self._gatewayId)
+				dm_observe_topic = ManagedGateway.DM_OBSERVE_TOPIC_TEMPLATE %  (self._gatewayType,self._gatewayId)
+				self.client.subscribe( [(dm_response_topic, 1), (dm_observe_topic, 1), (Client.COMMAND_TOPIC, 1)] )
 		elif rc == 5:
 			self.logAndRaiseException(ConnectionException("Not authorized: s (%s, %s, %s)" % (self.clientId, self.username, self.password)))
 		else:
@@ -393,7 +511,7 @@ class ManagedClient(Client):
 	
 	
 	def on_subscribe(self, client, userdata, mid, granted_qos):
-		# Once IoTF acknowledges the subscriptions we are able to process commands and responses from device management server 
+		# Once Watson IoT acknowledges the subscriptions we are able to process commands and responses from device management server 
 		self.subscriptionsAcknowledged.set()
 		self.manage()
 	
@@ -420,11 +538,13 @@ class ManagedClient(Client):
 			},
 			'reqId': reqId
 		}
-		
+
+		manage_topic = ManagedGateway.MANAGE_TOPIC_TEMPLATE % (self._gatewayType,self._gatewayId)		
 		resolvedEvent = threading.Event()
-		self.client.publish(ManagedClient.MANAGE_TOPIC, payload=json.dumps(message), qos=1, retain=False)
+		
+		self.client.publish(manage_topic, payload=json.dumps(message), qos=1, retain=False)
 		with self._deviceMgmtRequestsPendingLock:
-			self._deviceMgmtRequestsPending[reqId] = {"topic": ManagedClient.MANAGE_TOPIC, "message": message, "event": resolvedEvent} 
+			self._deviceMgmtRequestsPending[reqId] = {"topic": manage_topic, "message": message, "event": resolvedEvent} 
 		
 		# Register the future call back to IoT Foundation 2 minutes before the device lifetime expiry
 		if lifetime != 0:
@@ -443,10 +563,12 @@ class ManagedClient(Client):
 			'reqId': reqId
 		}
 		
+		unmanage_topic = ManagedGateway.UNMANAGE_TOPIC_TEMPLATE % (self._gatewayType,self._gatewayId)
 		resolvedEvent = threading.Event()
-		self.client.publish(ManagedClient.UNMANAGE_TOPIC, payload=json.dumps(message), qos=1, retain=False)
+				
+		self.client.publish(unmanage_topic, payload=json.dumps(message), qos=1, retain=False)
 		with self._deviceMgmtRequestsPendingLock:
-			self._deviceMgmtRequestsPending[reqId] = {"topic": ManagedClient.UNMANAGE_TOPIC, "message": message, "event": resolvedEvent} 
+			self._deviceMgmtRequestsPending[reqId] = {"topic": unmanage_topic, "message": message, "event": resolvedEvent} 
 		
 		return resolvedEvent
 	
@@ -476,11 +598,13 @@ class ManagedClient(Client):
 			"d": self._location,
 			"reqId": reqId
 		}
-		
+
+		update_location_topic = ManagedGateway.UPDATE_LOCATION_TOPIC_TEMPLATE % (self._gatewayType,self._gatewayId)		
 		resolvedEvent = threading.Event()
-		self.client.publish(ManagedClient.UPDATE_LOCATION_TOPIC, payload=json.dumps(message), qos=1, retain=False)
+
+		self.client.publish(update_location_topic, payload=json.dumps(message), qos=1, retain=False)
 		with self._deviceMgmtRequestsPendingLock:
-			self._deviceMgmtRequestsPending[reqId] = {"topic": ManagedClient.UPDATE_LOCATION_TOPIC, "message": message, "event": resolvedEvent}
+			self._deviceMgmtRequestsPending[reqId] = {"topic": update_location_topic, "message": message, "event": resolvedEvent}
 		
 		return resolvedEvent
 	
@@ -500,11 +624,13 @@ class ManagedClient(Client):
 			"d": { "errorCode": errorCode },
 			"reqId": reqId
 		}
-		
+
+		add_error_code_topic = ManagedGateway.ADD_ERROR_CODE_TOPIC_TEMPLATE %  (self._gatewayType,self._gatewayId)		
 		resolvedEvent = threading.Event()
-		self.client.publish(ManagedClient.ADD_ERROR_CODE_TOPIC, payload=json.dumps(message), qos=1, retain=False)
+
+		self.client.publish(add_error_code_topic, payload=json.dumps(message), qos=1, retain=False)
 		with self._deviceMgmtRequestsPendingLock:
-			self._deviceMgmtRequestsPending[reqId] = {"topic": ManagedClient.ADD_ERROR_CODE_TOPIC, "message": message, "event": resolvedEvent} 
+			self._deviceMgmtRequestsPending[reqId] = {"topic": add_error_code_topic, "message": message, "event": resolvedEvent} 
 		
 		return resolvedEvent
 
@@ -520,10 +646,12 @@ class ManagedClient(Client):
 			"reqId": reqId
 		}
 		
+		clear_error_codes_topic = ManagedGateway.CLEAR_ERROR_CODES_TOPIC_TEMPLATE %  (self._gatewayType,self._gatewayId)		
 		resolvedEvent = threading.Event()
-		self.client.publish(ManagedClient.CLEAR_ERROR_CODES_TOPIC, payload=json.dumps(message), qos=1, retain=False)
+
+		self.client.publish(clear_error_codes_topic, payload=json.dumps(message), qos=1, retain=False)
 		with self._deviceMgmtRequestsPendingLock:
-			self._deviceMgmtRequestsPending[reqId] = {"topic": ManagedClient.CLEAR_ERROR_CODES_TOPIC, "message": message, "event": resolvedEvent} 
+			self._deviceMgmtRequestsPending[reqId] = {"topic": clear_error_codes_topic, "message": message, "event": resolvedEvent} 
 		
 		return resolvedEvent
 	
@@ -552,34 +680,40 @@ class ManagedClient(Client):
 			
 			if request is None:
 				return False
-				
-			if request['topic'] == ManagedClient.MANAGE_TOPIC:
+			
+			manage_topic = ManagedGateway.MANAGE_TOPIC_TEMPLATE % (self._gatewayType,self._gatewayId)
+			unmanage_topic = ManagedGateway.UNMANAGE_TOPIC_TEMPLATE % (self._gatewayType,self._gatewayId)
+			update_location_topic = ManagedGateway.UPDATE_LOCATION_TOPIC_TEMPLATE % (self._gatewayType,self._gatewayId)
+			add_error_code_topic = ManagedGateway.ADD_ERROR_CODE_TOPIC_TEMPLATE % (self._gatewayType,self._gatewayId)
+			clear_error_codes_topic = ManagedGateway.CLEAR_ERROR_CODES_TOPIC_TEMPLATE %  (self._gatewayType,self._gatewayId)
+						
+			if request['topic'] == manage_topic:
 				if rc == 200:
 					self.logger.info("[%s] Manage action completed: %s" % (rc, json.dumps(request['message'])))
 					self.readyForDeviceMgmt.set()
 				else:
 					self.logger.critical("[%s] Manage action failed: %s" % (rc, json.dumps(request['message'])))
-					
-			elif request['topic'] == ManagedClient.UNMANAGE_TOPIC:
+
+			elif request['topic'] == unmanage_topic:
 				if rc == 200:
 					self.logger.info("[%s] Unmanage action completed: %s" % (rc, json.dumps(request['message'])))
 					self.readyForDeviceMgmt.clear()
 				else:
 					self.logger.critical("[%s] Unmanage action failed: %s" % (rc, json.dumps(request['message'])))
 			
-			elif request['topic'] == ManagedClient.UPDATE_LOCATION_TOPIC:
+			elif request['topic'] == update_location_topic:
 				if rc == 200:
 					self.logger.info("[%s] Location update action completed: %s" % (rc, json.dumps(request['message'])))
 				else:
 					self.logger.critical("[%s] Location update action failed: %s" % (rc, json.dumps(request['message'])))
 
-			elif request['topic'] == ManagedClient.ADD_ERROR_CODE_TOPIC:
+			elif request['topic'] == add_error_code_topic:
 				if rc == 200:
 					self.logger.info("[%s] Add error code action completed: %s" % (rc, json.dumps(request['message'])))
 				else:
 					self.logger.critical("[%s] Add error code action failed: %s" % (rc, json.dumps(request['message'])))
 
-			elif request['topic'] == ManagedClient.CLEAR_ERROR_CODES_TOPIC:
+			elif request['topic'] == clear_error_codes_topic:
 				if rc == 200:
 					self.logger.info("[%s] Clear error codes action completed: %s" % (rc, json.dumps(request['message'])))
 				else:
@@ -593,8 +727,6 @@ class ManagedClient(Client):
 			return True
 
 	
-
-
 
 def ParseConfigFile(configFilePath):
 	parms = configparser.ConfigParser()
@@ -619,7 +751,7 @@ def ParseConfigFile(configFilePath):
 				authToken = parms.get(sectionHeader, "auth-token", None)
 		
 	except IOError as e:
-		reason = "Error reading device configuration file '%s' (%s)" % (configFilePath,e[1])
+		reason = "Error reading gateway configuration file '%s' (%s)" % (configFilePath,e[1])
 		raise ConfigurationException(reason)
 		
 	return {'org': organization, 'type': deviceType, 'id': deviceId, 'auth-method': authMethod, 'auth-token': authToken}

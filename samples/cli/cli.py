@@ -1,5 +1,5 @@
 # *****************************************************************************
-# Copyright (c) 2014 IBM Corporation and other Contributors.
+# Copyright (c) 2014, 2016 IBM Corporation and other Contributors.
 #
 # All rights reserved. This program and the accompanying materials
 # are made available under the terms of the Eclipse Public License v1.0
@@ -7,7 +7,8 @@
 # http://www.eclipse.org/legal/epl-v10.html 
 #
 # Contributors:
-#   David Parker - Initial Contribution
+#   David Parker 			- Initial Contribution
+#   Amit M Mangalvedkar		- Modified as per ReST v2
 # *****************************************************************************
 
 import argparse
@@ -43,17 +44,36 @@ def interruptHandler(signal, frame):
 	sys.exit(0)
 
 
-def deviceList():
-	global client, cliArgs
-	deviceList = client.api.getDevices()
-	if cliArgs.json:
-		print(deviceList)
-	else:
-		today = datetime.now(pytz.timezone('UTC'))
-		for device in deviceList:
-			delta = today - iso8601.parse_date(device['registration']['date'])
-			print("%-40sRegistered %s days ago by %s" % (device['uuid'], delta.days, device['registration']['auth']['id']))
+def deviceList(maxResults = 100):
+	today = datetime.now(pytz.timezone('UTC'))
+	_deviceListPage(maxResults, None, today, 0)
 
+def _deviceListPage(maxResults, bookmark, today, count=0):
+	global client, cliArgs
+	# Check whether we've already met the request
+	if count >= maxResults:
+		return
+	
+	# Only retrieve the number of results that we need to complete the request
+	# Maximum page size of 10 at a time (no need to be this low, however it's
+	# useful to demonstrate how paging works to set this to a low value)
+	limit = min(maxResults-count, 10)
+	
+	deviceList = client.api.getAllDevices(parameters = {"_limit": limit, "_bookmark": bookmark, "_sort": "typeId,deviceId"})
+	resultArray = deviceList['results']
+	for device in resultArray:
+		if cliArgs.json:
+			print(device)
+		else:
+			count += 1;
+			#print("Device = ",device['uuid'])
+			delta = today - iso8601.parse_date(device['registration']['date'])
+			print("%3s %-60sRegistered %s days ago by %s" % (count, device['typeId'] + ":" + device['deviceId'], delta.days, device['registration']['auth']['id']))
+	# Next page
+	if "bookmark" in deviceList:
+		bookmark = deviceList["bookmark"]
+		_deviceListPage(maxResults, bookmark, today, count)
+	
 
 def deviceGet(deviceType, deviceId):
 	global client, cliArgs
@@ -63,7 +83,7 @@ def deviceGet(deviceType, deviceId):
 	else:
 		today = datetime.now(pytz.timezone('UTC'))
 		delta = today - iso8601.parse_date(device['registration']['date'])
-		print("%-40sRegistered %s days ago by %s" % (device['uuid'], delta.days, device['registration']['auth']['id']))
+		print("%-40sRegistered %s days ago by %s" % (device['deviceId'], delta.days, device['registration']['auth']['id']))
 
 
 def deviceAdd(deviceType, deviceId, metadata):
@@ -72,7 +92,7 @@ def deviceAdd(deviceType, deviceId, metadata):
 	if cliArgs.json:
 		print(device)
 	else:
-		print("%-40sGenerated Authentication Token = %s" % (device['uuid'], device['password']))
+		print("%-40sGenerated Authentication Token = %s" % (device['deviceId'], device['authToken']))
 
 def deviceRemove(deviceType, deviceId):
 	global client
@@ -93,7 +113,7 @@ def historian(args):
 		print(result)
 	else:
 		i = 0
-		for event in result:
+		for event in result['events']:
 			i = i + 1
 			if 'device_id' not in event:
 				event['device_id'] = args[1]
@@ -121,7 +141,7 @@ options:
 def cmdUsage():
 	print("""
 commands:
-  device list
+  device list [MAX RESULTS(100)]
   device add TYPE ID
   device get TYPE ID
   device remove TYPE ID
@@ -143,7 +163,16 @@ def processCommandInput(words):
 			return False
 			
 		elif words[1] == "list":
-			deviceList()
+			if len(words) == 2:
+				deviceList()
+			else:
+				try:
+					maxResults = int(words[2])
+					deviceList(maxResults)
+				except ValueError:
+					cmdUsage()
+					return False
+                
 			return True
 			
 		elif words[1] == "get":
@@ -177,7 +206,7 @@ def processCommandInput(words):
 			metadata = None
 			if len(words) == 5:
 				metadata = json.loads(words[4])
-			deviceUpdate(words[2], words[3], metadata)
+			updateDevice(words[2], words[3], metadata)
 			return True
 	
 	cmdUsage()
