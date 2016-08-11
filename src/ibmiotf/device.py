@@ -149,7 +149,7 @@ class Client(AbstractClient):
 			self.logger.warning("Unable to send event %s because device is not currently connected")
 			return False
 		else:
-			self.logger.debug("Sending event %s with data %s" % (event, json.dumps(data)))
+			self.logger.debug("Sending event %s with data %s" % (event, data))
 			topic = 'iot-2/evt/'+event+'/fmt/' + msgFormat
 
 			if msgFormat in self._messageEncoderModules:
