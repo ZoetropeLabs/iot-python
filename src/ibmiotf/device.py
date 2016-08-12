@@ -223,7 +223,7 @@ class Client(AbstractClient):
 			self.logger.warning("Unable to subscribe to commands because device is not currently connected")
 			return False
 		else:
-			topic = 'iot-2/cmd/+/fmt/json'
+			topic = COMMAND_TOPIC
 			self.client.subscribe(topic, qos=1)
 			return True
 
