@@ -223,7 +223,7 @@ class Client(AbstractClient):
 			self.logger.warning("Unable to subscribe to commands because device is not currently connected")
 			return False
 		else:
-			topic = COMMAND_TOPIC
+			topic = self.COMMAND_TOPIC
 			self.client.subscribe(topic, qos=1)
 			return True
 
