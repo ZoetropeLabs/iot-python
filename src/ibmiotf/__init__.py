@@ -57,32 +57,6 @@ class AbstractClient:
 		
 		# Configure logging
 		self.logger = logging.getLogger(self.__module__+"."+self.__class__.__name__)
-		self.logger.setLevel(logging.INFO)
-		
-		# Remove any existing log handlers we may have picked up from getLogger()
-		self.logger.handlers = []
-		
-		if logHandlers:
-			if isinstance(logHandlers, list):
-				# Add all supplied log handlers
-				for handler in logHandlers:
-					self.logger.addHandler(handler)
-			else:
-				# Add the supplied log handler
-				self.logger.addHandler(logHandlers)
-		else:
-			# Generate a default rotating file log handler and stream handler
-			logFileName = '%s.log' % (clientId.replace(":", "_"))
-			fhFormatter = logging.Formatter('%(asctime)-25s %(name)-25s ' + ' %(levelname)-7s %(message)s')
-			rfh = RotatingFileHandler(logFileName, mode='a', maxBytes=1024000 , backupCount=0, encoding=None, delay=True)
-			rfh.setFormatter(fhFormatter)
-			
-			ch = logging.StreamHandler()
-			ch.setFormatter(fhFormatter)
-			ch.setLevel(logging.DEBUG)
-			
-			self.logger.addHandler(rfh)
-			self.logger.addHandler(ch)
 		
 		self.client = paho.Client(self.clientId, clean_session=False if cleanSession == "false" else True)
 		
