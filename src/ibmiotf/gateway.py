@@ -741,7 +741,7 @@ class ManagedGateway(Client):
 
 def ParseConfigFile(configFilePath):
 	parms = configparser.ConfigParser({"domain": "internetofthings.ibmcloud.com"})
-	sectionHeader = "device"
+	sectionHeader = "gateway"
 	try:
 		with open(configFilePath) as f:
 			try:
