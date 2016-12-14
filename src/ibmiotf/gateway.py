@@ -134,8 +134,8 @@ class Client(AbstractClient):
 		if rc == 0:
 			self.connectEvent.set()
 			self.logger.info("Connected successfully: %s" % self.clientId)
-			#if self._options['org'] != "quickstart":
-				#self.subscribeToGatewayCommands()
+			if self._options['org'] != "quickstart":
+				self.subscribeToGatewayCommands()
 		elif rc == 5:
 			self.logAndRaiseException(ConnectionException("Not authorized: s (%s, %s, %s)" % (self.clientId, self.username, self.password)))
 		else:
@@ -515,6 +515,7 @@ class ManagedGateway(Client):
 				dm_response_topic = ManagedGateway.DM_RESPONSE_TOPIC_TEMPLATE %  (self._gatewayType,self._gatewayId)
 				dm_observe_topic = ManagedGateway.DM_OBSERVE_TOPIC_TEMPLATE %  (self._gatewayType,self._gatewayId)
 				self.client.subscribe( [(dm_response_topic, 1), (dm_observe_topic, 1)] )
+                                self.subscribeToGatwayCommands()
 		elif rc == 5:
 			self.logAndRaiseException(ConnectionException("Not authorized: s (%s, %s, %s)" % (self.clientId, self.username, self.password)))
 		else:
