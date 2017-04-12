@@ -26,7 +26,7 @@ import threading
 import iso8601
 import pytz
 from datetime import datetime
-from pkg_resources import get_distribution. parse_version
+from pkg_resources import get_distribution, parse_version
 from encodings.base64_codec import base64_encode
 
 __version__ = "0.2.4"
