@@ -121,7 +121,17 @@ if __name__ == "__main__":
 			options = ibmiotf.device.ParseConfigFile(configFilePath)
 		else:
 			options = {"org": organization, "type": deviceType, "id": deviceId, "auth-method": authMethod, "auth-token": authToken}
-		client = ibmiotf.device.Client(options)
+		
+		# !!
+		# Note that the OnLy different between this client and the main client is the change 
+		# below to use device.HttpClient instead of device.Client.
+		# 
+		# However, note that the HTTP client is limited in functionality compared to the main 
+		# MQTT based client and would only be recommended where MQTT is not an option.
+		# 
+		# !!
+		client = ibmiotf.device.HttpClient(options)
+		
 		client.commandCallback = commandProcessor
 		client.connect()
 	except ibmiotf.ConfigurationException as e:

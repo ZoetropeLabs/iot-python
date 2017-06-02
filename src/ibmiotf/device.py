@@ -7,8 +7,8 @@
 # http://www.eclipse.org/legal/epl-v10.html
 #
 # Contributors:
-#   David Parker  - Initial Contribution
-#   Lokesh Haralakatta - Added DME Support
+#   David Parker
+#   Lokesh Haralakatta
 # *****************************************************************************
 
 import json
@@ -21,8 +21,8 @@ import paho.mqtt.client as paho
 
 from datetime import datetime
 
-from ibmiotf import AbstractClient, InvalidEventException, UnsupportedAuthenticationMethod, ConfigurationException, ConnectionException, MissingMessageEncoderException, MissingMessageDecoderException
-from ibmiotf.codecs import jsonCodec, jsonIotfCodec
+from ibmiotf import AbstractClient, HttpAbstractClient, InvalidEventException, UnsupportedAuthenticationMethod,ConfigurationException, ConnectionException, MissingMessageEncoderException,MissingMessageDecoderException
+from ibmiotf.codecs import jsonCodec, jsonIotfCodec, xmlCodec
 
 
 # Support Python 2.7 and 3.4 versions of configparser
@@ -65,6 +65,16 @@ class Client(AbstractClient):
 		if "clean-session" not in self._options:
 			self._options['clean-session'] = "true"
 
+		if "org" not in self._options:
+			# Default to the quickstart
+			self._options['org'] = "quickstart"
+
+		if "port" not in self._options and self._options["org"] != "quickstart":
+			self._options["port"] = 8883;
+
+		if self._options["org"] == "quickstart":
+			self._options["port"] = 1883;
+
 		### REQUIRED ###
 		if self._options['org'] == None:
 			raise ConfigurationException("Missing required property: org")
@@ -81,8 +91,7 @@ class Client(AbstractClient):
 				if self._options['auth-token'] == None:
 					raise ConfigurationException("Missing required property for token based authentication: auth-token")
 			else:
-				raise UnsupportedAuthenticationMethod(options['authMethod'])
-
+				raise UnsupportedAuthenticationMethod(options['auth-method'])
 
 		AbstractClient.__init__(
 			self,
@@ -92,7 +101,8 @@ class Client(AbstractClient):
 			username = "use-token-auth" if (self._options['auth-method'] == "token") else None,
 			password = self._options['auth-token'],
 			logHandlers = logHandlers,
-			cleanSession = self._options['clean-session']
+			cleanSession = self._options['clean-session'],
+			port = self._options['port']
 		)
 
 		# Add handler for commands if not connected to QuickStart
@@ -108,22 +118,24 @@ class Client(AbstractClient):
 
 		self.setMessageEncoderModule('json', jsonCodec)
 		self.setMessageEncoderModule('json-iotf', jsonIotfCodec)
+		self.setMessageEncoderModule('xml', xmlCodec)
 
 
-	'''
-	This is called after the client has received a CONNACK message from the broker in response to calling connect().
-	The parameter rc is an integer giving the return code:
-	0: Success
-	1: Refused - unacceptable protocol version
-	2: Refused - identifier rejected
-	3: Refused - server unavailable
-	4: Refused - bad user name or password
-	5: Refused - not authorised
-	'''
 	def on_connect(self, client, userdata, flags, rc):
+		'''
+		This is called after the client has received a CONNACK message from the broker in response to calling connect().
+		The parameter rc is an integer giving the return code:
+
+		0: Success
+		1: Refused - unacceptable protocol version
+		2: Refused - identifier rejected
+		3: Refused - server unavailable
+		4: Refused - bad user name or password
+		5: Refused - not authorised
+		'''
 		if rc == 0:
 			self.connectEvent.set()
-			self.logger.info("Connected successfully: %s" % self.clientId)
+			self.logger.info("Connected successfully: %s" % (self.clientId))
 			if self._options['org'] != "quickstart":
 				self.__subscribeToCommands()
 		elif rc == 5:
@@ -131,20 +143,22 @@ class Client(AbstractClient):
 		else:
 			self.logAndRaiseException(ConnectionException("Connection failed: RC= %s" % (rc)))
 
-	'''
-	Publish an event in IoTF.
-	Parameters:
-		event - the name of this event
-		msgFormat - the format of the data for this event
-		data - the data for this event
-	Optional paramters:
-		qos - the equivalent MQTT semantics of quality of service using the same constants (0, 1 and 2)
-		on_publish - a function that will be called when receipt of the publication is confirmed.  This
-					 has different implications depending on the qos:
-					 qos 0 - the client has asynchronously begun to send the event
-					 qos 1 and 2 - the client has confirmation of delivery from IoTF
-	'''
 	def publishEvent(self, event, msgFormat, data, qos=0, on_publish=None):
+		'''
+		Publish an event in IoTF.
+
+		Parameters:
+			event - the name of this event
+			msgFormat - the format of the data for this event
+			data - the data for this event
+
+		Optional paramters:
+			qos - the equivalent MQTT semantics of quality of service using the same constants (0, 1 and 2)
+			on_publish - a function that will be called when receipt of the publication is confirmed.  This
+						 has different implications depending on the qos:
+						 qos 0 - the client has asynchronously begun to send the event
+						 qos 1 and 2 - the client has confirmation of delivery from IoTF
+		'''
 		if not self.connectEvent.wait():
 			self.logger.warning("Unable to send event %s because device is not currently connected")
 			return False
@@ -174,47 +188,10 @@ class Client(AbstractClient):
 				raise MissingMessageEncoderException(msgFormat)
 
 
-	'''
-	This method is used by the device to publish events over HTTP(s)
-	It accepts 2 parameters, event which denotes event type and data which is the message to be posted
-	It throws a ConnectionException with the message "Server not found" if the client is unable to reach the server
-	Otherwise it returns the HTTP status code, (200 - 207 for success)
-	'''
-	def publishEventOverHTTP(self, event, data):
-		self.logger.debug("Sending event %s with data %s" % (event, json.dumps(data)))
-
-		templateUrl = '%s://%s.%s/api/v0002/device/types/%s/devices/%s/events/%s'
-
-		orgid = self._options['org']
-		deviceType = self._options['type']
-		deviceId = self._options['id']
-		authMethod = self._options['auth-method']
-		authToken = self._options['auth-token']
-		credentials = (authMethod, authToken)
-
-		if orgid == 'quickstart':
-			protocol = 'http'
-		else:
-			protocol = 'https'
-
-		intermediateUrl = templateUrl % (protocol, orgid, self._options['domain'], deviceType, deviceId, event)
-
-		try:
-			msgFormat = "json"
-			payload = self._messageEncoderModules[msgFormat].encode(data, datetime.now(pytz.timezone('UTC')))
-			response = requests.post(intermediateUrl, auth = credentials, data = payload, headers = {'content-type': 'application/json'})
-		except Exception as e:
-			self.logger.error("POST Failed")
-			self.logger.error(e)
-			raise ConnectionException("Server not found")
-
-#		print ("Response status = ", response.status_code, "\tResponse ", response.headers)
-		if response.status_code >= 300:
-			self.logger.warning(response.headers)
-		return response.status_code
-
-
 	def __subscribeToCommands(self):
+		'''
+		Subscribe to commands sent to this device.
+		'''
 		if self._options['org'] == "quickstart":
 			self.logger.warning("QuickStart applications do not support commands")
 			return False
@@ -223,15 +200,14 @@ class Client(AbstractClient):
 			self.logger.warning("Unable to subscribe to commands because device is not currently connected")
 			return False
 		else:
-			topic = self.COMMAND_TOPIC
-			self.client.subscribe(topic, qos=1)
+			self.client.subscribe(Client.COMMAND_TOPIC, qos=1)
 			return True
 
-	'''
-	Internal callback for device command messages, parses source device from topic string and
-	passes the information on to the registerd device command callback
-	'''
 	def __onCommand(self, client, userdata, pahoMessage):
+		'''
+		Internal callback for device command messages, parses source device from topic string and
+		passes the information on to the registerd device command callback
+		'''
 		with self._recvLock:
 			self.recv = self.recv + 1
 		try:
@@ -241,6 +217,92 @@ class Client(AbstractClient):
 		else:
 			self.logger.debug("Received command '%s'" % (command.command))
 			if self.commandCallback: self.commandCallback(command)
+
+
+class HttpClient(HttpAbstractClient):
+	"""
+	A basic device client with limited capabilies that forgoes an active MQTT connection to the service.
+	"""
+
+	def __init__(self, options, logHandlers=None):
+		self._options = options
+
+		### DEFAULTS ###
+		if "domain" not in self._options:
+			# Default to the domain for the public cloud offering
+			self._options['domain'] = "internetofthings.ibmcloud.com"
+		if "clean-session" not in self._options:
+			self._options['clean-session'] = "true"
+
+		### REQUIRED ###
+		if self._options['org'] == None:
+			raise ConfigurationException("Missing required property: org")
+		if self._options['type'] == None:
+			raise ConfigurationException("Missing required property: type")
+		if self._options['id'] == None:
+			raise ConfigurationException("Missing required property: id")
+
+		if self._options['org'] != "quickstart":
+			if self._options['auth-method'] == None:
+				raise ConfigurationException("Missing required property: auth-method")
+
+			if (self._options['auth-method'] == "token"):
+				if self._options['auth-token'] == None:
+					raise ConfigurationException("Missing required property for token based authentication: auth-token")
+			else:
+				raise UnsupportedAuthenticationMethod(options['authMethod'])
+
+		HttpAbstractClient.__init__(
+			self,
+			clientId = "d:" + self._options['org'] + ":" + self._options['type'] + ":" + self._options['id'],
+			logHandlers = logHandlers
+		)
+
+		self.setMessageEncoderModule('json', jsonCodec)
+		self.setMessageEncoderModule('xml', xmlCodec)
+
+
+
+	def publishEvent(self, event, msgFormat, data):
+		"""
+		Publish an event over HTTP(s) as given supported format
+		Throws a ConnectionException with the message "Server not found" if the client is unable to reach the server
+		Otherwise it returns the HTTP status code, (200 - 207 for success)
+		"""
+		self.logger.debug("Sending event %s with data %s" % (event, json.dumps(data)))
+
+		templateUrl = 'https://%s.messaging.%s/api/v0002/device/types/%s/devices/%s/events/%s'
+
+		orgid = self._options['org']
+		deviceType = self._options['type']
+		deviceId = self._options['id']
+		authMethod = "use-token-auth"
+		authToken = self._options['auth-token']
+		credentials = (authMethod, authToken)
+
+		if orgid == 'quickstart':
+			authMethod = None
+			authToken = None
+
+		intermediateUrl = templateUrl % (orgid, self._options['domain'], deviceType, deviceId, event)
+		self.logger.debug("URL: %s",intermediateUrl)
+		try:
+			self.logger.debug("Sending event %s with data %s" % (event, json.dumps(data)))
+
+			if msgFormat in self._messageEncoderModules:
+				payload = self._messageEncoderModules[msgFormat].encode(data, datetime.now(pytz.timezone('UTC')))
+				contentType = self.getContentType(msgFormat)
+				response = requests.post(intermediateUrl, auth = credentials, data = payload, headers = {'content-type': contentType})
+			else:
+				raise MissingMessageEncoderException(msgFormat)
+
+		except Exception as e:
+			self.logger.error(e)
+			raise e
+
+		if response.status_code >= 300:
+			self.logger.warning("Unable to send event: HTTP response code = %s" % (response.status_code))
+		return response.status_code
 
 
 
@@ -433,7 +495,7 @@ class ManagedClient(Client):
 	def on_connect(self, client, userdata, flags, rc):
 		if rc == 0:
 			self.connectEvent.set()
-			self.logger.info("Connected successfully: %s" % self.clientId)
+			self.logger.info("Connected successfully: %s, Port: %s" % (self.clientId,self.port))
 			if self._options['org'] != "quickstart":
 				self.client.subscribe( [(ManagedClient.DM_RESPONSE_TOPIC, 1), (ManagedClient.DM_OBSERVE_TOPIC, 1),
 				(ManagedClient.DM_REBOOT_TOPIC,1),(ManagedClient.DM_FACTORY_REESET,1),(ManagedClient.DM_UPDATE_TOPIC,1),
@@ -483,7 +545,7 @@ class ManagedClient(Client):
 		with self._deviceMgmtRequestsPendingLock:
 			self._deviceMgmtRequestsPending[reqId] = {"topic": ManagedClient.MANAGE_TOPIC, "message": message, "event": resolvedEvent}
 
-		# Register the future call back to IoT Foundation 2 minutes before the device lifetime expiry
+		# Register the future call back to Watson IoT Platform 2 minutes before the device lifetime expiry
 		if lifetime != 0:
 			if self.manageTimer is not None:
 				self._logger.debug("Cancelling existing manage timer")
@@ -827,9 +889,13 @@ class ManagedClient(Client):
 
 
 def ParseConfigFile(configFilePath):
-	parms = configparser.ConfigParser({"domain": "internetofthings.ibmcloud.com",
-	                                   "clean-session": "true"})
+	parms = configparser.ConfigParser({
+		"domain": "internetofthings.ibmcloud.com",
+		"port": "8883",
+		"clean-session": "true"
+	})
 	sectionHeader = "device"
+
 	try:
 		with open(configFilePath) as f:
 			try:
@@ -846,9 +912,10 @@ def ParseConfigFile(configFilePath):
 		authMethod = parms.get(sectionHeader, "auth-method")
 		authToken = parms.get(sectionHeader, "auth-token")
 		cleanSession = parms.get(sectionHeader, "clean-session")
+		port = parms.get(sectionHeader, "port")
 
 	except IOError as e:
 		reason = "Error reading device configuration file '%s' (%s)" % (configFilePath,e[1])
 		raise ConfigurationException(reason)
 
-	return {'domain': domain, 'org': organization, 'type': deviceType, 'id': deviceId, 'auth-method': authMethod, 'auth-token': authToken, 'clean-session': cleanSession}
+	return {'domain': domain, 'org': organization, 'type': deviceType, 'id': deviceId, 'auth-method': authMethod, 'auth-token': authToken, 'clean-session': cleanSession, 'port': int(port)}
