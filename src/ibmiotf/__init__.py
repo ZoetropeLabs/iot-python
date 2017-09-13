@@ -31,6 +31,18 @@ from encodings.base64_codec import base64_encode
 
 __version__ = "0.2.8"
 
+def _getBrokerAddress(domain = None, orgId = None, completeBrokerUrl = None):
+	# Compute broker adress
+	if not completeBrokerUrl and (not domain or not orgId):
+		raise ConfigurationException(
+			"No full broker URL given, so both domain and organisation "
+			"must be specified"
+		)
+	return (
+		completeBrokerUrl if completeBrokerUrl
+		else orgId + '.messaging.' + domain
+	)
+
 class Message:
 	def __init__(self, data, timestamp=None):
 		self.data = data
@@ -38,11 +50,12 @@ class Message:
 
 class AbstractClient:
 	def __init__(self, domain, organization, clientId, username, password, port=8883,
-										logHandlers=None, cleanSession="true"):
+										logHandlers=None, cleanSession="true",
+										completeBrokerUrl=None):
 		self.organization = organization
 		self.username = username
 		self.password = password
-		self.address = organization + ".messaging." + domain
+		self.address = _getBrokerAddress(domain, organization, completeBrokerUrl)
 		self.port = port
 		self.keepAlive = 60
 

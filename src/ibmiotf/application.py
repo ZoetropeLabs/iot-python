@@ -188,6 +188,7 @@ class Client(ibmiotf.AbstractClient):
 			self,
 			domain = self._options['domain'],
 			organization = self._options['org'],
+			completeBrokerUrl = self._options.get('broker-url', None),
 			clientId = clientIdPrefix + ":" + self._options['org'] + ":" + self._options['id'],
 			username = username,
 			password = password,
