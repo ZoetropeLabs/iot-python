@@ -108,7 +108,8 @@ class Client(AbstractClient):
 			username = "use-token-auth" if (self._options['auth-method'] == "token") else None,
 			password = self._options['auth-token'],
 			logHandlers = logHandlers,
-			port = self._options['port']
+			port = self._options['port'],
+			disableTLS = self._options.get('disable-tls', False)
 		)
 
 

@@ -103,7 +103,8 @@ class Client(AbstractClient):
 			password = self._options['auth-token'],
 			logHandlers = logHandlers,
 			cleanSession = self._options['clean-session'],
-			port = self._options['port']
+			port = self._options['port'],
+			disableTLS = self._options.get('disable-tls', False)
 		)
 
 		# Add handler for commands if not connected to QuickStart

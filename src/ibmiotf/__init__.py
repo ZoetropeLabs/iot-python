@@ -51,7 +51,7 @@ class Message:
 class AbstractClient:
 	def __init__(self, domain, organization, clientId, username, password, port=8883,
 										logHandlers=None, cleanSession="true",
-										completeBrokerUrl=None):
+										completeBrokerUrl=None, disableTLS=False):
 		self.organization = organization
 		self.username = username
 		self.password = password
@@ -77,6 +77,9 @@ class AbstractClient:
 		try:
 			self.tlsVersion = ssl.PROTOCOL_TLSv1_2
 		except:
+			self.tlsVersion = None
+                
+		if disableTLS:
 			self.tlsVersion = None
 
 		# Configure authentication

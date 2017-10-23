@@ -194,7 +194,8 @@ class Client(ibmiotf.AbstractClient):
 			password = password,
 			logHandlers = logHandlers,
 			cleanSession = self._options['clean-session'],
-			port = self._options['port']
+			port = self._options['port'],
+			disableTLS = self._options.get('disable-tls', False)
 		)
 
 		# Add handlers for events and status
