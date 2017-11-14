@@ -9,9 +9,3 @@ class AbstractTest(object):
     setupAppClient = ibmiotf.application.Client(appOptions)
     
     ORG_ID = setupAppClient._options["org"]
-    
-
-
-
-    
-    
