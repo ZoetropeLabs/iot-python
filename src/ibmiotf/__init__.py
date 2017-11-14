@@ -51,7 +51,7 @@ class Message:
 class AbstractClient:
     def __init__(self, domain, organization, clientId, username, password, port=8883,
                  logHandlers=None, cleanSession="true",
-                 completeBrokerUrl=None, disableTLS=False):
+                 completeBrokerUrl=None, disableTLS=False, useWebsockets=False):
         self.organization = organization
         self.username = username
         self.password = password
@@ -72,7 +72,14 @@ class AbstractClient:
         # Configure logging
         self.logger = logging.getLogger(self.__module__+"."+self.__class__.__name__)
 
-        self.client = paho.Client(self.clientId, clean_session=False if cleanSession == "false" else True)
+        if useWebsockets:
+            transport = "websockets"
+        else:
+            transport = "tcp"
+
+        clean_session = (False if cleanSession == "false" else True)
+
+        self.client = paho.Client(self.clientId, clean_session=clean_session, transport=transport)
 
         try:
             self.tlsVersion = ssl.PROTOCOL_TLSv1_2

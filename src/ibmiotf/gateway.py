@@ -109,9 +109,9 @@ class Client(AbstractClient):
             password = self._options['auth-token'],
             logHandlers = logHandlers,
             port = self._options['port'],
-            disableTLS = self._options.get('disable-tls', False)
+            disableTLS = self._options.get('disable-tls', False),
+            useWebsockets = self._options.get("use-websockets", False),
         )
-
 
         # Add handler for commands if not connected to QuickStart
         if self._options['org'] != "quickstart":
@@ -122,7 +122,6 @@ class Client(AbstractClient):
             #self.client.message_callback_add(gatewayCommandTopic, self.__onCommand)
             self.client.message_callback_add("iot-2/type/+/id/+/cmd/+/fmt/+", self.__onDeviceCommand)
             self.client.message_callback_add(messageNotificationTopic, self.__onMessageNotification)
-
 
         self.subscriptionsAcknowledged = threading.Event()
 
