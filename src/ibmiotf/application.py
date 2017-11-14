@@ -115,7 +115,7 @@ class Event:
 
 
 class Command:
-    def    __init__(self, pahoMessage, messageEncoderModules):
+    def __init__(self, pahoMessage, messageEncoderModules):
         result = DEVICE_COMMAND_RE.match(pahoMessage.topic)
         if result:
             self.deviceType = result.group(1)

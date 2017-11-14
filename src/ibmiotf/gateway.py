@@ -118,7 +118,7 @@ class Client(AbstractClient):
             gatewayCommandTopic = "iot-2/type/" + options['type'] + "/id/" + options['id'] + "/cmd/+/fmt/json"
             messageNotificationTopic = "iot-2/type/" + options['type'] + "/id/" + options['id'] + "/notify"
             #localTopic = "iot-2/type/iotsample-raspberrypi2/id/89898889/cmd/greeting/fmt/json"
-                        # This seems to duplicate commands on both the device command callback on the gateway callback
+            # This seems to duplicate commands on both the device command callback on the gateway callback
             #self.client.message_callback_add(gatewayCommandTopic, self.__onCommand)
             self.client.message_callback_add("iot-2/type/+/id/+/cmd/+/fmt/+", self.__onDeviceCommand)
             self.client.message_callback_add(messageNotificationTopic, self.__onMessageNotification)

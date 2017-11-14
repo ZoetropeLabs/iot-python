@@ -78,7 +78,7 @@ class AbstractClient:
             self.tlsVersion = ssl.PROTOCOL_TLSv1_2
         except:
             self.tlsVersion = None
-                
+
         if disableTLS:
             self.tlsVersion = None
 

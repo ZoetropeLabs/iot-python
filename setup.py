@@ -20,8 +20,8 @@ setup(
     long_description=open('README.rst').read(),
     install_requires=[
         "iso8601 >= 0.1.10",
-        "pytz >= 2014.7",
         "paho-mqtt >= 1.2",
+        "pytz >= 2014.7",
         "requests_toolbelt >= 0.7.0",
         "dicttoxml >= 1.7.4",
         "xmltodict >= 0.10.2"
