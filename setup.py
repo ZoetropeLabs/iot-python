@@ -8,7 +8,7 @@ except ImportError:
 
 setup(
     name='ibmiotf',
-    version="0.2.8",
+    version="0.3.1",
     author='David Parker',
     author_email='parkerda@uk.ibm.com',
     package_dir={'': 'src'},
@@ -36,6 +36,7 @@ setup(
         'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
+        'Programming Language :: Python :: 3.6',
         'Topic :: Communications',
         'Topic :: Internet',
         'Topic :: Software Development :: Libraries :: Python Modules'

@@ -161,7 +161,7 @@ class Client(AbstractClient):
 						 qos 0 - the client has asynchronously begun to send the event
 						 qos 1 and 2 - the client has confirmation of delivery from IoTF
 		'''
-		if not self.connectEvent.wait():
+        if not self.connectEvent.wait(timeout=10):
 			self.logger.warning("Unable to send event %s because device is not currently connected")
 			return False
 		else:
@@ -172,13 +172,16 @@ class Client(AbstractClient):
 				payload = self._messageEncoderModules[msgFormat].encode(data, datetime.now(pytz.timezone('UTC')))
 
 				try:
-					# need to take lock to ensure on_publish is not called before we know the mid
-					if on_publish is not None:
-						self._messagesLock.acquire()
-
 					result = self.client.publish(topic, payload=payload, qos=qos, retain=False)
 					if result[0] == paho.MQTT_ERR_SUCCESS:
 						if on_publish is not None:
+                            self._messagesLock.acquire()
+                            if result[1] in self._onPublishCallbacks:
+                                # paho callback beat this thread so call callback inline now
+                                del self._onPublishCallbacks[result[1]]
+                                on_publish()
+                            else:
+                                # this thread beat paho callback so set up for call later
 							self._onPublishCallbacks[result[1]] = on_publish
 						return True
 					else:
@@ -198,7 +201,7 @@ class Client(AbstractClient):
 			self.logger.warning("QuickStart applications do not support commands")
 			return False
 
-		if not self.connectEvent.wait():
+        if not self.connectEvent.wait(timeout=10):
 			self.logger.warning("Unable to subscribe to commands because device is not currently connected")
 			return False
 		else:
@@ -463,7 +466,7 @@ class ManagedClient(Client):
 	def notifyFieldChange(self, field, value):
 		with self._deviceMgmtObservationsLock:
 			if field in self._deviceMgmtObservations:
-				if not self.readyForDeviceMgmt.wait():
+                if not self.readyForDeviceMgmt.wait(timeout=10):
 					self.logger.warning("Unable to notify service of field change because device is not ready for device management")
 					return threading.Event().set()
 
@@ -521,7 +524,7 @@ class ManagedClient(Client):
 		if lifetime < 3600:
 			lifetime = 0
 
-		if not self.subscriptionsAcknowledged.wait():
+        if not self.subscriptionsAcknowledged.wait(timeout=10):
 			self.logger.warning("Unable to send register for device management because device subscriptions are not in place")
 			return threading.Event().set()
 
@@ -559,7 +562,7 @@ class ManagedClient(Client):
 
 
 	def unmanage(self):
-		if not self.readyForDeviceMgmt.wait():
+        if not self.readyForDeviceMgmt.wait(timeout=10):
 			self.logger.warning("Unable to set device to unmanaged because device is not ready for device management")
 			return threading.Event().set()
 
@@ -592,7 +595,7 @@ class ManagedClient(Client):
 		elif "accuracy" in self._location:
 			del self._location["accuracy"]
 
-		if not self.readyForDeviceMgmt.wait():
+        if not self.readyForDeviceMgmt.wait(timeout=10):
 			self.logger.warning("Unable to publish device location because device is not ready for device management")
 			return threading.Event().set()
 
@@ -616,7 +619,7 @@ class ManagedClient(Client):
 
 		self._errorCode = errorCode
 
-		if not self.readyForDeviceMgmt.wait():
+        if not self.readyForDeviceMgmt.wait(timeout=10):
 			self.logger.warning("Unable to publish error code because device is not ready for device management")
 			return threading.Event().set()
 
@@ -636,7 +639,7 @@ class ManagedClient(Client):
 	def clearErrorCodes(self):
 		self._errorCode = None
 
-		if not self.readyForDeviceMgmt.wait():
+        if not self.readyForDeviceMgmt.wait(timeout=10):
 			self.logger.warning("Unable to clear error codes because device is not ready for device management")
 			return threading.Event().set()
 
@@ -654,7 +657,7 @@ class ManagedClient(Client):
 
 	def addLog(self, msg="",data="",sensitivity=0):
 		timestamp = datetime.now().isoformat()
-		if not self.readyForDeviceMgmt.wait():
+        if not self.readyForDeviceMgmt.wait(timeout=10):
 			self.logger.warning("Unable to publish error code because device is not ready for device management")
 			return threading.Event().set()
 
@@ -678,7 +681,7 @@ class ManagedClient(Client):
 
 	def clearLog(self):
 
-		if not self.readyForDeviceMgmt.wait():
+        if not self.readyForDeviceMgmt.wait(timeout=10):
 			self.logger.warning("Unable to clear log because device is not ready for device management")
 			return threading.Event().set()
 
@@ -832,6 +835,7 @@ class ManagedClient(Client):
 	def __onUpdatedDevice(self,client,userdata,pahoMessage):
 		self.logger.info("Message received on topic :%s with payload %s" % (ManagedClient.DM_UPDATE_TOPIC,pahoMessage.payload.decode("utf-8")))
 		data = json.loads(pahoMessage.payload.decode("utf-8"))
+        if 'reqId' in data :
 		reqId = data['reqId']
 		d=data['d']
 		value = None
@@ -842,6 +846,15 @@ class ManagedClient(Client):
 		if value != None :
 			self.__firmwareUpdate = DeviceFirmware(value['version'],value['name'],value['uri'],value['verifier'],value['state'],value['updateStatus'],value['updatedDateTime'])
 		threading.Thread(target= self.respondDeviceAction,args=(reqId,204,"")).start()
+        else:
+                        d=data['d']
+                        value = None
+                        for obj in d['fields'] :
+                                if 'field' in obj :
+                                        if obj['field'] == "metadata" :
+                                                value = obj["value"]
+                        if value != None :
+                                self.metadata = value
 
 	def setState(self,status):
 		notify = {"d":{"fields":[{"field":"mgmt.firmware","value":{"state":status}}]}}

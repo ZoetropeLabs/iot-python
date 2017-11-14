@@ -29,7 +29,7 @@ import pytz
 from datetime import datetime
 from encodings.base64_codec import base64_encode
 
-__version__ = "0.2.8"
+__version__ = "0.3.1"
 
 def _getBrokerAddress(domain = None, orgId = None, completeBrokerUrl = None):
 	# Compute broker adress
@@ -50,8 +50,8 @@ class Message:
 
 class AbstractClient:
 	def __init__(self, domain, organization, clientId, username, password, port=8883,
-										logHandlers=None, cleanSession="true",
-										completeBrokerUrl=None, disableTLS=False):
+                 logHandlers=None, cleanSession="true",
+                 completeBrokerUrl=None, disableTLS=False):
 		self.organization = organization
 		self.username = username
 		self.password = password
@@ -125,13 +125,13 @@ class AbstractClient:
 			self.connectEvent.clear()
 			self.client.connect(self.address, port=self.port, keepalive=self.keepAlive)
 			self.client.loop_start()
-			if not self.connectEvent.wait(timeout=10):
+			if not self.connectEvent.wait(timeout=30):
 				self.client.loop_stop()
-				self.logAndRaiseException(ConnectionException("Operation timed out connecting to the IBM Internet of Things service: %s" % (self.address)))
+				self.logAndRaiseException(ConnectionException("Operation timed out connecting to IBM Watson IoT Platform: %s" % (self.address)))
 
 		except socket.error as serr:
 			self.client.loop_stop()
-			self.logAndRaiseException(ConnectionException("Failed to connect to the IBM Internet of Things service: %s - %s" % (self.address, str(serr))))
+			self.logAndRaiseException(ConnectionException("Failed to connect to IBM Watson IoT Platform: %s - %s" % (self.address, str(serr))))
 
 	def disconnect(self):
 		#self.logger.info("Closing connection to the IBM Watson IoT Platform")
@@ -178,6 +178,10 @@ class AbstractClient:
 				midOnPublish = self._onPublishCallbacks.get(mid)
 				del self._onPublishCallbacks[mid]
 				midOnPublish()
+			else:
+				# record the fact that paho callback has already come through so it can be called inline
+				# with the publish.
+				self._onPublishCallbacks[mid] = None
 
 	'''
 	Setter and Getter methods to set and get user defined keepAlive Interval  value to

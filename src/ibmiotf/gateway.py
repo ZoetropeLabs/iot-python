@@ -97,7 +97,7 @@ class Client(AbstractClient):
 		self._options['subscriptionList'] = {}
 
 
-		COMMAND_TOPIC = "iot-2/type/" + self._options['type'] + "/id/" + self._options['id'] + "/cmd/+/fmt/+"
+        self.COMMAND_TOPIC = "iot-2/type/" + self._options['type'] + "/id/" + self._options['id'] + "/cmd/+/fmt/+"
 
 		AbstractClient.__init__(
 			self,
@@ -139,7 +139,7 @@ class Client(AbstractClient):
 		self.gatewayApiKey = "g/" + self._options['org'] + '/' + self._options['type'] + '/' + self._options['id']
 		self.logger = logging.getLogger(self.__module__+"."+self.__class__.__name__)
 		self.logger.setLevel(logging.INFO)
-		self.apiClient = api.ApiClient({"org": self._options['org'], "auth-token": self._options['auth-token'], "auth-key": self.gatewayApiKey },self.logger)
+        self.api = api.ApiClient({"org": self._options['org'], "auth-token": self._options['auth-token'], "auth-key": self.gatewayApiKey }, self.logger)
 
 	'''
 	This is called after the client has received a CONNACK message from the broker in response to calling connect().
@@ -179,7 +179,7 @@ class Client(AbstractClient):
 					 qos 1 and 2 - the client has confirmation of delivery from Watson IoT
 	'''
 	def publishDeviceEvent(self, deviceType, deviceId, event, msgFormat, data, qos=0, on_publish=None):
-		if not self.connectEvent.wait():
+        if not self.connectEvent.wait(timeout=10):
 			self.logger.warning("Unable to send event %s because gateway as a device is not currently connected")
 			return False
 		else:
@@ -190,13 +190,16 @@ class Client(AbstractClient):
 				payload = self._messageEncoderModules[msgFormat].encode(data, datetime.now(pytz.timezone('UTC')))
 
 				try:
-					# need to take lock to ensure on_publish is not called before we know the mid
-					if on_publish is not None:
-						self._messagesLock.acquire()
-
 					result = self.client.publish(topic, payload=payload, qos=qos, retain=False)
 					if result[0] == paho.MQTT_ERR_SUCCESS:
 						if on_publish is not None:
+                            self._messagesLock.acquire()
+                            if result[1] in self._onPublishCallbacks:
+                                # paho callback beat this thread so call callback inline now
+                                del self._onPublishCallbacks[result[1]]
+                                on_publish()
+                            else:
+                                # this thread beat paho callback so set up for call later
 							self._onPublishCallbacks[result[1]] = on_publish
 						return True
 					else:
@@ -225,7 +228,7 @@ class Client(AbstractClient):
 		gatewayType = self._options['type']
 		gatewayId = self._options['id']
 
-		if not self.connectEvent.wait():
+        if not self.connectEvent.wait(timeout=10):
 			self.logger.warning("Unable to send event %s because gateway as a device is not currently connected")
 			return False
 		else:
@@ -236,13 +239,16 @@ class Client(AbstractClient):
 				payload = self._messageEncoderModules[msgFormat].encode(data, datetime.now(pytz.timezone('UTC')))
 
 				try:
-					# need to take lock to ensure on_publish is not called before we know the mid
-					if on_publish is not None:
-						self._messagesLock.acquire()
-
 					result = self.client.publish(topic, payload=payload, qos=qos, retain=False)
 					if result[0] == paho.MQTT_ERR_SUCCESS:
 						if on_publish is not None:
+                            self._messagesLock.acquire()
+                            if result[1] in self._onPublishCallbacks:
+                                # paho callback beat this thread so call callback inline now
+                                on_publish()
+                                del self._onPublishCallbacks[result[1]]
+                            else:
+                                # this thread beat paho callback so set up for call later
 							self._onPublishCallbacks[result[1]] = on_publish
 						return True
 					else:
@@ -259,7 +265,7 @@ class Client(AbstractClient):
 			self.logger.warning("QuickStart not supported in Gateways")
 			return False
 
-		if not self.connectEvent.wait():
+        if not self.connectEvent.wait(timeout=10):
 			self.logger.warning("Unable to subscribe to device commands because gateway is not currently connected")
 			return False
 		else:
@@ -276,7 +282,7 @@ class Client(AbstractClient):
 		if self._options['org'] == "quickstart":
 			self.logger.warning("QuickStart not supported in Gateways")
 			return False
-		if not self.connectEvent.wait():
+        if not self.connectEvent.wait(timeout=10):
 			self.logger.warning("Unable to subscribe to gateway commands because gateway is not currently connected")
 			return False
 		else:
@@ -292,7 +298,7 @@ class Client(AbstractClient):
 		if self._options['org'] == "quickstart":
 			self.logger.warning("QuickStart not supported in Gateways")
 			return False
-		if not self.connectEvent.wait():
+        if not self.connectEvent.wait(timeout=10):
 			self.logger.warning("Unable to subscribe to notifications because gateway is not currently connected")
 			return False
 		else:
@@ -364,7 +370,7 @@ class DeviceInfo(object):
 		return json.dumps(self.__dict__, sort_keys=True)
 
 
-class ManagedGateway(Client):
+class ManagedClient(Client):
 
 	# Publish MQTT topics
 	'''
@@ -393,7 +399,7 @@ class ManagedGateway(Client):
 
 	def __init__(self, options, logHandlers=None, deviceInfo=None):
 		if options['org'] == "quickstart":
-			raise Exception("Unable to create ManagedGateway instance.  QuickStart devices do not support device management")
+            raise Exception("Unable to create ManagedClient instance.  QuickStart devices do not support device management")
 
 		Client.__init__(self, options, logHandlers)
 		# TODO: Raise fatal exception if tries to create managed device client for QuickStart
@@ -462,7 +468,7 @@ class ManagedGateway(Client):
 	def notifyFieldChange(self, field, value):
 		with self._deviceMgmtObservationsLock:
 			if field in self._deviceMgmtObservations:
-				if not self.readyForDeviceMgmt.wait():
+                if not self.readyForDeviceMgmt.wait(timeout=10):
 					self.logger.warning("Unable to notify service of field change because gateway is not ready for gateway management")
 					return threading.Event().set()
 
@@ -475,7 +481,7 @@ class ManagedGateway(Client):
 					"reqId": reqId
 				}
 
-				notify_topic = ManagedGateway.NOTIFY_TOPIC_TEMPLATE %  (self._gatewayType,self._gatewayId)
+                notify_topic = ManagedClient.NOTIFY_TOPIC_TEMPLATE %  (self._gatewayType,self._gatewayId)
 				resolvedEvent = threading.Event()
 
 				self.client.publish(notify_topic, payload=json.dumps(message), qos=1, retain=False)
@@ -491,8 +497,8 @@ class ManagedGateway(Client):
 			self.connectEvent.set()
 			self.logger.info("Connected successfully: %s, Port: %s" % (self.clientId,self.port))
 			if self._options['org'] != "quickstart":
-				dm_response_topic = ManagedGateway.DM_RESPONSE_TOPIC_TEMPLATE %  (self._gatewayType,self._gatewayId)
-				dm_observe_topic = ManagedGateway.DM_OBSERVE_TOPIC_TEMPLATE %  (self._gatewayType,self._gatewayId)
+                dm_response_topic = ManagedClient.DM_RESPONSE_TOPIC_TEMPLATE %  (self._gatewayType,self._gatewayId)
+                dm_observe_topic = ManagedClient.DM_OBSERVE_TOPIC_TEMPLATE %  (self._gatewayType,self._gatewayId)
 				self.client.subscribe( [(dm_response_topic, 1), (dm_observe_topic, 1), (self.COMMAND_TOPIC, 1)] )
 		elif rc == 5:
 			self.logAndRaiseException(ConnectionException("Not authorized: s (%s, %s, %s)" % (self.clientId, self.username, self.password)))
@@ -511,7 +517,7 @@ class ManagedGateway(Client):
 		if lifetime < 3600:
 			lifetime = 0
 
-		if not self.subscriptionsAcknowledged.wait():
+        if not self.subscriptionsAcknowledged.wait(timeout=10):
 			self.logger.warning("Unable to send register for device management because device subscriptions are not in place")
 			return threading.Event().set()
 
@@ -529,7 +535,7 @@ class ManagedGateway(Client):
 			'reqId': reqId
 		}
 
-		manage_topic = ManagedGateway.MANAGE_TOPIC_TEMPLATE % (self._gatewayType,self._gatewayId)
+        manage_topic = ManagedClient.MANAGE_TOPIC_TEMPLATE % (self._gatewayType,self._gatewayId)
 		resolvedEvent = threading.Event()
 
 		self.client.publish(manage_topic, payload=json.dumps(message), qos=1, retain=False)
@@ -544,7 +550,7 @@ class ManagedGateway(Client):
 
 
 	def unmanage(self):
-		if not self.readyForDeviceMgmt.wait():
+        if not self.readyForDeviceMgmt.wait(timeout=10):
 			self.logger.warning("Unable to set device to unmanaged because device is not ready for device management")
 			return threading.Event().set()
 
@@ -553,7 +559,7 @@ class ManagedGateway(Client):
 			'reqId': reqId
 		}
 
-		unmanage_topic = ManagedGateway.UNMANAGE_TOPIC_TEMPLATE % (self._gatewayType,self._gatewayId)
+        unmanage_topic = ManagedClient.UNMANAGE_TOPIC_TEMPLATE % (self._gatewayType,self._gatewayId)
 		resolvedEvent = threading.Event()
 
 		self.client.publish(unmanage_topic, payload=json.dumps(message), qos=1, retain=False)
@@ -579,7 +585,7 @@ class ManagedGateway(Client):
 		elif "accuracy" in self._location:
 			del self._location["accuracy"]
 
-		if not self.readyForDeviceMgmt.wait():
+        if not self.readyForDeviceMgmt.wait(timeout=10):
 			self.logger.warning("Unable to publish device location because device is not ready for device management")
 			return threading.Event().set()
 
@@ -589,7 +595,7 @@ class ManagedGateway(Client):
 			"reqId": reqId
 		}
 
-		update_location_topic = ManagedGateway.UPDATE_LOCATION_TOPIC_TEMPLATE % (self._gatewayType,self._gatewayId)
+        update_location_topic = ManagedClient.UPDATE_LOCATION_TOPIC_TEMPLATE % (self._gatewayType,self._gatewayId)
 		resolvedEvent = threading.Event()
 
 		self.client.publish(update_location_topic, payload=json.dumps(message), qos=1, retain=False)
@@ -605,7 +611,7 @@ class ManagedGateway(Client):
 
 		self._errorCode = errorCode
 
-		if not self.readyForDeviceMgmt.wait():
+        if not self.readyForDeviceMgmt.wait(timeout=10):
 			self.logger.warning("Unable to publish error code because device is not ready for device management")
 			return threading.Event().set()
 
@@ -615,7 +621,7 @@ class ManagedGateway(Client):
 			"reqId": reqId
 		}
 
-		add_error_code_topic = ManagedGateway.ADD_ERROR_CODE_TOPIC_TEMPLATE %  (self._gatewayType,self._gatewayId)
+        add_error_code_topic = ManagedClient.ADD_ERROR_CODE_TOPIC_TEMPLATE %  (self._gatewayType,self._gatewayId)
 		resolvedEvent = threading.Event()
 
 		self.client.publish(add_error_code_topic, payload=json.dumps(message), qos=1, retain=False)
@@ -627,7 +633,7 @@ class ManagedGateway(Client):
 	def clearErrorCodes(self):
 		self._errorCode = None
 
-		if not self.readyForDeviceMgmt.wait():
+        if not self.readyForDeviceMgmt.wait(timeout=10):
 			self.logger.warning("Unable to clear error codes because device is not ready for device management")
 			return threading.Event().set()
 
@@ -636,7 +642,7 @@ class ManagedGateway(Client):
 			"reqId": reqId
 		}
 
-		clear_error_codes_topic = ManagedGateway.CLEAR_ERROR_CODES_TOPIC_TEMPLATE %  (self._gatewayType,self._gatewayId)
+        clear_error_codes_topic = ManagedClient.CLEAR_ERROR_CODES_TOPIC_TEMPLATE %  (self._gatewayType,self._gatewayId)
 		resolvedEvent = threading.Event()
 
 		self.client.publish(clear_error_codes_topic, payload=json.dumps(message), qos=1, retain=False)
@@ -671,11 +677,11 @@ class ManagedGateway(Client):
 			if request is None:
 				return False
 
-			manage_topic = ManagedGateway.MANAGE_TOPIC_TEMPLATE % (self._gatewayType,self._gatewayId)
-			unmanage_topic = ManagedGateway.UNMANAGE_TOPIC_TEMPLATE % (self._gatewayType,self._gatewayId)
-			update_location_topic = ManagedGateway.UPDATE_LOCATION_TOPIC_TEMPLATE % (self._gatewayType,self._gatewayId)
-			add_error_code_topic = ManagedGateway.ADD_ERROR_CODE_TOPIC_TEMPLATE % (self._gatewayType,self._gatewayId)
-			clear_error_codes_topic = ManagedGateway.CLEAR_ERROR_CODES_TOPIC_TEMPLATE %  (self._gatewayType,self._gatewayId)
+            manage_topic = ManagedClient.MANAGE_TOPIC_TEMPLATE % (self._gatewayType,self._gatewayId)
+            unmanage_topic = ManagedClient.UNMANAGE_TOPIC_TEMPLATE % (self._gatewayType,self._gatewayId)
+            update_location_topic = ManagedClient.UPDATE_LOCATION_TOPIC_TEMPLATE % (self._gatewayType,self._gatewayId)
+            add_error_code_topic = ManagedClient.ADD_ERROR_CODE_TOPIC_TEMPLATE % (self._gatewayType,self._gatewayId)
+            clear_error_codes_topic = ManagedClient.CLEAR_ERROR_CODES_TOPIC_TEMPLATE %  (self._gatewayType,self._gatewayId)
 
 			if request['topic'] == manage_topic:
 				if rc == 200:
