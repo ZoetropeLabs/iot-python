@@ -97,7 +97,7 @@ class AbstractClient:
                 caFile = os.path.dirname(os.path.abspath(__file__)) + "/messaging.pem"
                 self.client.tls_set(ca_certs=caFile, certfile=None, keyfile=None, cert_reqs=ssl.CERT_REQUIRED, tls_version=ssl.PROTOCOL_TLSv1_2)
             else:
-                self.port = 1883
+                # self.port = 1883
                 self.logger.warning("Unable to encrypt messages because TLSv1.2 is unavailable (MQTT over SSL requires at least Python v2.7.9 or 3.4 and openssl v1.0.1)")
             self.client.username_pw_set(self.username, self.password)
 
