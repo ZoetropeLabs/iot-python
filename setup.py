@@ -20,13 +20,12 @@ setup(
     long_description=open('README.rst').read(),
     install_requires=[
         "iso8601 >= 0.1.10",
-        "paho-mqtt >= 1.2",
+        "paho-mqtt >= 1.3",
         "pytz >= 2014.7",
         "requests_toolbelt >= 0.7.0",
         "dicttoxml >= 1.7.4",
         "xmltodict >= 0.10.2"
     ],
-    dependency_links = ["http://github.com/ZoetropeLabs/paho.mqtt.python/tarball/master#egg=paho-mqtt-2.0.0"],
     classifiers=[
         'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',
