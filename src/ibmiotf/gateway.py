@@ -737,8 +737,8 @@ def ParseConfigFile(configFilePath):
                 deviceId = parms.get(sectionHeader, "id", fallback=None)
                 authMethod = parms.get(sectionHeader, "auth-method", fallback=None)
                 authToken = parms.get(sectionHeader, "auth-token", fallback=None)
-                cleanSession = parms.get(sectionHeader, "clean-session")
-                port = parms.get(sectionHeader, "port")
+                cleanSession = parms.get(sectionHeader, "clean-session", fallback=None)
+                port = parms.get(sectionHeader, "port", fallback=None)
             except AttributeError:
                 # Python 2.7 support
                 # https://docs.python.org/3/library/configparser.html#configparser.ConfigParser.read_file
