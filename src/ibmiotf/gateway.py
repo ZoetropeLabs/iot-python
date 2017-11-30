@@ -724,7 +724,8 @@ class ManagedClient(Client):
 
 
 def ParseConfigFile(configFilePath):
-    parms = configparser.ConfigParser({"domain": "internetofthings.ibmcloud.com"})
+    parms = configparser.ConfigParser({"domain": "internetofthings.ibmcloud.com",
+                                       "port": "8883","clean-session": "true"})
     sectionHeader = "gateway"
     try:
         with open(configFilePath) as f:
@@ -737,8 +738,8 @@ def ParseConfigFile(configFilePath):
                 deviceId = parms.get(sectionHeader, "id", fallback=None)
                 authMethod = parms.get(sectionHeader, "auth-method", fallback=None)
                 authToken = parms.get(sectionHeader, "auth-token", fallback=None)
-                cleanSession = parms.get(sectionHeader, "clean-session", fallback=None)
-                port = parms.get(sectionHeader, "port", fallback=None)
+                cleanSession = parms.get(sectionHeader, "clean-session")
+                port = parms.get(sectionHeader, "port")
             except AttributeError:
                 # Python 2.7 support
                 # https://docs.python.org/3/library/configparser.html#configparser.ConfigParser.read_file
