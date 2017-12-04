@@ -271,6 +271,15 @@ class Client(AbstractClient):
             topic = 'iot-2/type/' + deviceType + '/id/' + deviceId + '/cmd/' + command + '/fmt/' + format
             self.client.subscribe(topic, qos=qos)
             self._options['subscriptionList'][topic] = qos
+
+            # Only add this if it's not present - if it is present, it should
+            # either be False in which case we should run `manage` for
+            # on_scubribe, or it's True and we've already run `manage` for this
+            # topic
+            dt = topic + "GATEWAY"
+            if dt not in self._paho_userdata:
+                self._paho_userdata[dt] = False
+
             return True
 
 
@@ -508,7 +517,23 @@ class ManagedClient(Client):
     def on_subscribe(self, client, userdata, mid, granted_qos):
         # Once Watson IoT acknowledges the subscriptions we are able to process commands and responses from device management server
         self.subscriptionsAcknowledged.set()
-        self.manage()
+
+        # suback doesn't actually tell you what you're subscribed to - have to
+        # just iterate over them all. There should only ever be 1 to run the
+        # 'manage' command for anyway
+        for dt in self._paho_userdata:
+            topic = dt[:-7]
+            subbed = self._userdata[dt]
+            if subbed is None:
+                # Don't think this can ever happen...
+                self.logger.warning("Tried to subcribe to %s but it wasn't in userdata", topic)
+            elif not subbed:
+                self.logger.debug("Running manage command for %s", topic)
+                self.manage()
+                self._userdata[dt] = True
+                break
+            else:
+                self.logger.debug("Already ran manage command for topic %s", topic)
 
 
     def manage(self, lifetime=3600, supportDeviceActions=False, supportFirmwareActions=False):
