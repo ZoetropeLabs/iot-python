@@ -79,7 +79,13 @@ class AbstractClient:
 
         clean_session = (False if cleanSession == "false" else True)
 
-        self.client = paho.Client(self.clientId, clean_session=clean_session, transport=transport)
+        self._paho_userdata = {}
+        self.client = paho.Client(
+            self.clientId,
+            clean_session=clean_session,
+            transport=transport,
+            userdata=self._paho_userdata,
+        )
 
         try:
             self.tlsVersion = ssl.PROTOCOL_TLSv1_2
