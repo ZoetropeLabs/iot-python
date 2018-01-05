@@ -111,6 +111,7 @@ class Client(AbstractClient):
             port = self._options['port'],
             disableTLS = self._options.get('disable-tls', False),
             useWebsockets = self._options.get("use-websockets", False),
+            keepAlive = self._options.get("keepalive", 60),
         )
 
         # Add handler for commands if not connected to QuickStart

@@ -51,12 +51,13 @@ class Message:
 class AbstractClient:
     def __init__(self, domain, organization, clientId, username, password, port=None,
                  logHandlers=None, cleanSession="true",
-                 completeBrokerUrl=None, disableTLS=False, useWebsockets=False):
+                 completeBrokerUrl=None, disableTLS=False, useWebsockets=False,
+                 keepAlive=60):
         self.organization = organization
         self.username = username
         self.password = password
         self.address = _getBrokerAddress(domain, organization, completeBrokerUrl)
-        self.keepAlive = 60
+        self.keepAlive = keepAlive
 
         self.connectEvent = threading.Event()
 
