@@ -49,14 +49,13 @@ class Message:
         self.timestamp = timestamp
 
 class AbstractClient:
-    def __init__(self, domain, organization, clientId, username, password, port=8883,
+    def __init__(self, domain, organization, clientId, username, password, port=None,
                  logHandlers=None, cleanSession="true",
                  completeBrokerUrl=None, disableTLS=False, useWebsockets=False):
         self.organization = organization
         self.username = username
         self.password = password
         self.address = _getBrokerAddress(domain, organization, completeBrokerUrl)
-        self.port = port
         self.keepAlive = 60
 
         self.connectEvent = threading.Event()
@@ -76,6 +75,16 @@ class AbstractClient:
             transport = "websockets"
         else:
             transport = "tcp"
+
+        if port is None:
+            if transport == "tcp":
+                port = 8883
+            else:
+                port = 9001
+
+        self.port = port
+
+        self.logger.debug("Using transport %s", transport)
 
         clean_session = (False if cleanSession == "false" else True)
 
