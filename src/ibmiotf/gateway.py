@@ -101,6 +101,11 @@ class Client(AbstractClient):
         else:
             client_id = "g:" + self._options['org'] + ":" + self._options['type'] + ":" + self._options['id']
 
+        if self._options['username']:
+            username = self._options['username']
+        else:
+            username = "use-token-auth" if (self._options['auth-method'] == "token") else None
+
 
         self.COMMAND_TOPIC = "iot-2/type/" + self._options['type'] + "/id/" + self._options['id'] + "/cmd/+/fmt/+"
 
@@ -110,7 +115,7 @@ class Client(AbstractClient):
             organization = self._options['org'],
             completeBrokerUrl = self._options.get('broker-url', None),
             clientId = client_id,
-            username = "use-token-auth" if (self._options['auth-method'] == "token") else None,
+            username = username,
             password = self._options['auth-token'],
             logHandlers = logHandlers,
             port = self._options['port'],
