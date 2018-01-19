@@ -96,6 +96,11 @@ class Client(AbstractClient):
                 raise UnsupportedAuthenticationMethod(options['authMethod'])
         self._options['subscriptionList'] = {}
 
+        if self._options['full_client_id']:
+            client_id = self._options['full_client_id']
+        else:
+            client_id = "g:" + self._options['org'] + ":" + self._options['type'] + ":" + self._options['id']
+
 
         self.COMMAND_TOPIC = "iot-2/type/" + self._options['type'] + "/id/" + self._options['id'] + "/cmd/+/fmt/+"
 
@@ -104,7 +109,7 @@ class Client(AbstractClient):
             domain = self._options['domain'],
             organization = self._options['org'],
             completeBrokerUrl = self._options.get('broker-url', None),
-            clientId = "g:" + self._options['org'] + ":" + self._options['type'] + ":" + self._options['id'],
+            clientId = client_id,
             username = "use-token-auth" if (self._options['auth-method'] == "token") else None,
             password = self._options['auth-token'],
             logHandlers = logHandlers,
