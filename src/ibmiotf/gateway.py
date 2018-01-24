@@ -776,6 +776,7 @@ def ParseConfigFile(configFilePath):
                 authToken = parms.get(sectionHeader, "auth-token", fallback=None)
                 cleanSession = parms.get(sectionHeader, "clean-session")
                 port = parms.get(sectionHeader, "port")
+                username = parms.get(sectionHeader, "username")
             except AttributeError:
                 # Python 2.7 support
                 # https://docs.python.org/3/library/configparser.html#configparser.ConfigParser.read_file
@@ -789,6 +790,7 @@ def ParseConfigFile(configFilePath):
                 authToken = parms.get(sectionHeader, "auth-token", None)
                 cleanSession = parms.get(sectionHeader, "clean-session",None)
                 port = parms.get(sectionHeader, "port",None)
+                username = parms.get(sectionHeader, "username",None)
 
     except IOError as e:
         reason = "Error reading gateway configuration file '%s' (%s)" % (configFilePath,e[1])
@@ -796,4 +798,4 @@ def ParseConfigFile(configFilePath):
 
     return {'domain': domain, 'org': organization, 'type': deviceType, 'id': deviceId,
             'auth-method': authMethod, 'auth-token': authToken,
-            'clean-session': cleanSession, 'port': port}
+            'clean-session': cleanSession, 'port': port, 'username': username}
