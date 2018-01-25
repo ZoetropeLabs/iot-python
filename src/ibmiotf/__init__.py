@@ -97,9 +97,12 @@ class AbstractClient:
             userdata=self._paho_userdata,
         )
 
+        self.client.enable_logger()
+
         try:
             self.tlsVersion = ssl.PROTOCOL_TLSv1_2
         except:
+            self.logger.warning("Unable to enable TLS")
             self.tlsVersion = None
 
         if disableTLS:
