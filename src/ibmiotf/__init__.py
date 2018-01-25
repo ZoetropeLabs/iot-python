@@ -70,7 +70,7 @@ class AbstractClient:
         self.clientId = clientId
 
         # Configure logging
-        self.logger = logging.getLogger(self.__module__+"."+self.__class__.__name__)
+        self.logger = logging.getLogger(__name__)
 
         if useWebsockets:
             transport = "websockets"
