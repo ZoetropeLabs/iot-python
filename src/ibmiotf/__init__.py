@@ -86,6 +86,7 @@ class AbstractClient:
         self.port = port
 
         self.logger.debug("Using transport %s", transport)
+        self.logger.debug("Using port %d", port)
 
         clean_session = (False if cleanSession == "false" else True)
 
@@ -117,6 +118,7 @@ class AbstractClient:
                     caFile = os.path.dirname(os.path.abspath(__file__)) + "/messaging.pem"
                 else:
                     caFile = None
+                self.logger.debug("Using TLS - %s", caFile)
                 self.client.tls_set(ca_certs=caFile, certfile=None, keyfile=None, cert_reqs=ssl.CERT_REQUIRED, tls_version=self.tlsVersion)
             else:
                 # self.port = 1883
