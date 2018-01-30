@@ -70,7 +70,7 @@ class AbstractClient:
         self.clientId = clientId
 
         # Configure logging
-        self.logger = logging.getLogger(self.__module__+"."+self.__class__.__name__)
+        self.logger = logging.getLogger(__name__)
 
         if useWebsockets:
             transport = "websockets"
@@ -97,9 +97,12 @@ class AbstractClient:
             userdata=self._paho_userdata,
         )
 
+        self.client.enable_logger()
+
         try:
             self.tlsVersion = ssl.PROTOCOL_TLSv1_2
         except:
+            self.logger.warning("Unable to enable TLS")
             self.tlsVersion = None
 
         if disableTLS:
@@ -110,8 +113,12 @@ class AbstractClient:
             # In environments where either ssl is not available, or TLSv1.2 is not available we will fallback to MQTT over TCP
             if self.tlsVersion is not None:
                 # Path to certificate
-                caFile = os.path.dirname(os.path.abspath(__file__)) + "/messaging.pem"
-                self.client.tls_set(ca_certs=caFile, certfile=None, keyfile=None, cert_reqs=ssl.CERT_REQUIRED, tls_version=ssl.PROTOCOL_TLSv1_2)
+                if "internetofthings.ibmcloud.com" in self.address:
+                    caFile = os.path.dirname(os.path.abspath(__file__)) + "/messaging.pem"
+                else:
+                    caFile = None
+                self.logger.debug("Using TLS - %s", caFile)
+                self.client.tls_set(ca_certs=caFile, certfile=None, keyfile=None, cert_reqs=ssl.CERT_REQUIRED, tls_version=self.tlsVersion)
             else:
                 # self.port = 1883
                 self.logger.warning("Unable to encrypt messages because TLSv1.2 is unavailable (MQTT over SSL requires at least Python v2.7.9 or 3.4 and openssl v1.0.1)")
