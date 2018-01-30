@@ -751,7 +751,7 @@ class ManagedClient(Client):
 
 def ParseConfigFile(configFilePath):
     parms = configparser.ConfigParser({"domain": "internetofthings.ibmcloud.com",
-                                       "port": "8883","clean-session": "true"})
+                                       "port": 1883, "clean-session": "true"})
     sectionHeader = "gateway"
     try:
         with open(configFilePath) as f:
@@ -786,4 +786,4 @@ def ParseConfigFile(configFilePath):
 
     return {'domain': domain, 'org': organization, 'type': deviceType, 'id': deviceId,
             'auth-method': authMethod, 'auth-token': authToken,
-            'clean-session': cleanSession, 'port': port}
+            'clean-session': cleanSession, 'port': int(port)}
