@@ -41,7 +41,7 @@ ch.setFormatter(formatter)
 logger.addHandler(ch)
 
 TABLE_ROW_TEMPLATE = "%-33s%-30s%s"
-NEVER_CONNECTED_REASON  = "Never Connected"
+NEVER_CONNECTED_ACTION  = "Never Connected"
 
 # The dict where the device connection state is stored deviceId -> status payload message
 # No locking necessary 
@@ -71,8 +71,26 @@ def statusCallback(status):
         summaryText = "%s %s" % (status.action, status.clientAddr)
     
     logger.debug(TABLE_ROW_TEMPLATE % (status.time.isoformat(), status.device, summaryText))
+    if status.closeCode == 288 and not status.retained:
+        # "Action":"Disconnect", "CloseCode":288,"Reason":"The client ID was reused."
+        # These status messages are ignored because it is possible this application
+        # will receive the disconnect status message after the connect status message,
+        # which would led to the wrong status in the map.
+        # (Both a connect and disconnect happen when a client ID is reused)
+        # BUT if the message is retained, it reflects the true client state (edge case),
+        # and we don't ignore the message.
+        logger.debug("Ignoring client ID reused")
+        return
     
+    if status.clientId in deviceConnStateMap:
+        if deviceConnStateMap[status.clientId].time > status.time:
+            # With scalable applications (A;...) it is possible that an older status message
+            # arrives after a newer one.
+            logger.debug("Ignoring older status message; %s <= %s" % (deviceConnStateMap[status.clientId].time, status.time))
+            return
+
     deviceConnStateMap[status.clientId] = status
+            
 
 def interruptHandler(signal, frame):
     client.disconnect()
@@ -90,7 +108,7 @@ def getDeviceStatus(type, id):
         status = deviceConnStateMap[clientId]
         return json.dumps(status.payload)
     else:
-        neverConnectedStatus = {"ClientID": clientId, "Reason": NEVER_CONNECTED_REASON}
+        neverConnectedStatus = {"ClientID": clientId, "Action": NEVER_CONNECTED_ACTION}
         return json.dumps(neverConnectedStatus)
     
 
