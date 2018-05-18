@@ -193,19 +193,27 @@ class Client(ibmiotf.AbstractClient):
 
         clientIdPrefix = "a" if ('type' not in self._options or self._options['type'] == 'standalone') else "A"
 
+        if self._options['full_client_id']:
+            client_id = self._options['full_client_id']
+        else:
+            client_id = clientIdPrefix + ":" + self._options['org'] + ":" + self._options['id'],
+
         # Call parent constructor
         ibmiotf.AbstractClient.__init__(
             self,
             domain = self._options['domain'],
             organization = self._options['org'],
             completeBrokerUrl = self._options.get('broker-url', None),
-            clientId = clientIdPrefix + ":" + self._options['org'] + ":" + self._options['id'],
+            clientId = client_id,
             username = username,
             password = password,
             logHandlers = logHandlers,
             cleanSession = self._options['clean-session'],
             port = self._options['port'],
-            disableTLS = self._options.get('disable-tls', False)
+            disableTLS = self._options.get('disable-tls', False),
+            useWebsockets = self._options.get("use-websockets", False),
+            keepAlive = self._options.get("keepalive", 60),
+            tlsVersion = self._options.get("tls-version", "PROTOCOL_TLSv1_2"),
         )
 
         # Add handler for subscriptions

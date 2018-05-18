@@ -96,6 +96,16 @@ class Client(AbstractClient):
                 raise UnsupportedAuthenticationMethod(options['authMethod'])
         self._options['subscriptionList'] = {}
 
+        if self._options['full_client_id']:
+            client_id = self._options['full_client_id']
+        else:
+            client_id = "g:" + self._options['org'] + ":" + self._options['type'] + ":" + self._options['id']
+
+        if self._options['username']:
+            username = self._options['username']
+        else:
+            username = "use-token-auth" if (self._options['auth-method'] == "token") else None
+
 
         self.COMMAND_TOPIC = "iot-2/type/" + self._options['type'] + "/id/" + self._options['id'] + "/cmd/+/fmt/+"
 
@@ -104,14 +114,15 @@ class Client(AbstractClient):
             domain = self._options['domain'],
             organization = self._options['org'],
             completeBrokerUrl = self._options.get('broker-url', None),
-            clientId = "g:" + self._options['org'] + ":" + self._options['type'] + ":" + self._options['id'],
-            username = "use-token-auth" if (self._options['auth-method'] == "token") else None,
+            clientId = client_id,
+            username = username,
             password = self._options['auth-token'],
             logHandlers = logHandlers,
             port = self._options['port'],
             disableTLS = self._options.get('disable-tls', False),
             useWebsockets = self._options.get("use-websockets", False),
             keepAlive = self._options.get("keepalive", 60),
+            tlsVersion = self._options.get("tls-version", "PROTOCOL_TLSv1_2"),
         )
 
         # Add handler for commands if not connected to QuickStart
@@ -777,10 +788,14 @@ def ParseConfigFile(configFilePath):
         cleanSession = parms.get(sectionHeader, "clean-session")
         port = parms.getint(sectionHeader, "port")
 
+        username = parms.getint(sectionHeader, "username")
+        full_client_id = parms.get(sectionHeader, "full_client_id")
+
     except IOError as e:
         reason = "Error reading device configuration file '%s' (%s)" % (configFilePath,e[1])
         raise ConfigurationException(reason)
 
     return {'domain': domain, 'org': organization, 'type': deviceType, 'id': deviceId,
             'auth-method': authMethod, 'auth-token': authToken,
-            'clean-session': cleanSession, 'port': int(port)}
+            'clean-session': cleanSession, 'port': int(port), 'username': username,
+            'full_client_id': full_client_id}

@@ -52,7 +52,7 @@ class AbstractClient:
     def __init__(self, domain, organization, clientId, username, password, port=None,
                  logHandlers=None, cleanSession="true",
                  completeBrokerUrl=None, disableTLS=False, useWebsockets=False,
-                 keepAlive=60):
+                 keepAlive=60, tlsVersion="PROTOCOL_TLSv1_2"):
         self.organization = organization
         self.username = username
         self.password = password
@@ -86,6 +86,7 @@ class AbstractClient:
         self.port = port
 
         self.logger.debug("Using transport %s", transport)
+        self.logger.debug("Using port %d", port)
 
         clean_session = (False if cleanSession == "false" else True)
 
@@ -99,29 +100,25 @@ class AbstractClient:
 
         self.client.enable_logger()
 
-        try:
-            self.tlsVersion = ssl.PROTOCOL_TLSv1_2
-        except:
-            self.logger.warning("Unable to enable TLS")
-            self.tlsVersion = None
-
         if disableTLS:
-            self.tlsVersion = None
-
-        # Configure authentication
-        if self.username is not None:
-            # In environments where either ssl is not available, or TLSv1.2 is not available we will fallback to MQTT over TCP
-            if self.tlsVersion is not None:
+            self.logger.warning("TLS force disabled")
+        else:
+            self.logger.debug("Trying to enable '%s'", tlsVersion)
+            try:
+                self.tlsVersion = getattr(ssl, tlsVersion)
+            except AttributeError:
+                self.logger.warning("Unable to enable TLS", exc_info=True)
+            else:
                 # Path to certificate
                 if "internetofthings.ibmcloud.com" in self.address:
                     caFile = os.path.dirname(os.path.abspath(__file__)) + "/messaging.pem"
                 else:
                     caFile = None
-                self.logger.debug("Using TLS - %s", caFile)
+                self.logger.debug("Using TLS - caFile = %s", caFile)
                 self.client.tls_set(ca_certs=caFile, certfile=None, keyfile=None, cert_reqs=ssl.CERT_REQUIRED, tls_version=self.tlsVersion)
-            else:
-                # self.port = 1883
-                self.logger.warning("Unable to encrypt messages because TLSv1.2 is unavailable (MQTT over SSL requires at least Python v2.7.9 or 3.4 and openssl v1.0.1)")
+
+        # Configure authentication
+        if self.username is not None:
             self.client.username_pw_set(self.username, self.password)
 
         # Attach MQTT callbacks
