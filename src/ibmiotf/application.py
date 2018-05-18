@@ -193,7 +193,7 @@ class Client(ibmiotf.AbstractClient):
 
         clientIdPrefix = "a" if ('type' not in self._options or self._options['type'] == 'standalone') else "A"
 
-        if self._options['full_client_id']:
+        if self._options.get('full_client_id'):
             client_id = self._options['full_client_id']
         else:
             client_id = clientIdPrefix + ":" + self._options['org'] + ":" + self._options['id'],
