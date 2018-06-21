@@ -99,7 +99,7 @@ class Client(AbstractClient):
             organization = self._options['org'],
             completeBrokerUrl = self._options.get('broker-url', None),
             clientId = "d:" + self._options['org'] + ":" + self._options['type'] + ":" + self._options['id'],
-            username = "use-token-auth" if (self._options['auth-method'] == "token") else None,
+            username = "use-token-auth" if (self._options['auth-method'] == "token") else self._options['auth-key'],
             password = self._options['auth-token'],
             logHandlers = logHandlers,
             cleanSession = self._options['clean-session'],
